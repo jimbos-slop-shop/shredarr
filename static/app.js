@@ -754,6 +754,12 @@ $("tab-n").onclick = () => setTab("n");
 let orphans = null,
   orphSig = "";
 const nsel = new Set();
+const orphQuery = () => $("nq").value.trim().toLowerCase();
+const orphShown = () =>
+  (orphans || []).filter(
+    (x) =>
+      !orphQuery() || [x.title, x.what, x.path, String(x.year || "")].some((v) => (v || "").toLowerCase().includes(orphQuery())),
+  );
 async function loadOrphans(force) {
   if (force) setText($("nsum"), "Checking your library…");
   try {
@@ -766,21 +772,24 @@ async function loadOrphans(force) {
   }
 }
 function renderOrphans() {
-  const items = orphans || [];
-  for (const id of [...nsel]) if (!items.some((x) => x.id === id)) nsel.delete(id);
-  const pick = items.filter((x) => nsel.has(x.id));
+  const all = orphans || [],
+    items = orphShown();
+  for (const id of [...nsel]) if (!all.some((x) => x.id === id)) nsel.delete(id);
+  const pick = all.filter((x) => nsel.has(x.id));
   setText(
     $("nsum"),
-    items.length
-      ? `${items.length} item${items.length === 1 ? "" : "s"} with no torrent · ${size(items.reduce((a, x) => a + x.size, 0))}` +
+    all.length
+      ? (items.length === all.length ? `${all.length}` : `${items.length} of ${all.length}`) +
+          ` item${all.length === 1 ? "" : "s"} with no torrent · ${size(items.reduce((a, x) => a + x.size, 0))}` +
           (pick.length ? ` · ${pick.length} selected (${size(pick.reduce((a, x) => a + x.size, 0))})` : "")
       : "",
   );
-  setText($("ncount"), String(items.length));
-  $("ncount").hidden = !items.length;
+  setText($("ncount"), String(all.length));
+  $("ncount").hidden = !all.length;
   $("nsel-del").hidden = !pick.length;
-  $("nempty").hidden = items.length > 0;
-  $("nselall").checked = items.length > 0 && pick.length === items.length;
+  $("nempty").hidden = all.length > 0;
+  $("nnone").hidden = !all.length || items.length > 0;
+  $("nselall").checked = items.length > 0 && items.every((x) => nsel.has(x.id));
   const sig = JSON.stringify(items.map((x) => x.id + x.size));
   if (sig === orphSig) {
     for (const tr of $("nrows").children) tr.firstChild.firstChild.checked = nsel.has(tr.dataset.id);
@@ -821,9 +830,11 @@ function renderOrphans() {
   );
 }
 $("nselall").onchange = (e) => {
-  for (const x of orphans || []) e.target.checked ? nsel.add(x.id) : nsel.delete(x.id);
+  for (const x of orphShown()) e.target.checked ? nsel.add(x.id) : nsel.delete(x.id);
   renderOrphans();
 };
+$("nq").oninput = renderOrphans;
+$("lq").oninput = renderLog;
 $("nrefresh").onclick = () => loadOrphans(true);
 $("nsel-del").onclick = () => askDeleteOrphans([...nsel]);
 async function askDeleteOrphans(ids) {
@@ -877,8 +888,11 @@ function evIcon(head, cls) {
 let logSig = "",
   logGroups = [];
 function renderLog() {
+  const q = $("lq").value.trim().toLowerCase();
+  const shown = q ? logGroups.filter((g) => g.some(([, m]) => m.toLowerCase().includes(q))) : logGroups;
+  $("lempty").hidden = !q || shown.length > 0;
   $("logrows").replaceChildren(
-    ...logGroups.map((g) => {
+    ...shown.map((g) => {
       const [ts, head] = g[0],
         subs = g.slice(1),
         cls = [head, ...subs.map((x) => x[1])].map(lineClass);
