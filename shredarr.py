@@ -5,7 +5,7 @@ seeding rules are met and none of the torrent's files are still in the library."
 import base64, hashlib, hmac, html, http.cookiejar, http.cookies, json, os, queue, re, secrets, shutil, sqlite3, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 REPO = os.environ.get("SHREDARR_REPO", "jschaef80/shredarr")  # where update checks look for new releases
 CFG = os.environ.get("SHREDARR_CONFIG", "/config/config.json")
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -81,11 +81,13 @@ def db():
 
 MODES = {"either": "seed time OR ratio (whichever first)", "both": "seed time AND ratio",
          "days": "seed time only", "ratio": "ratio only", "never": "never delete (protected)"}
-SERVICES = {"sonarr": "Sonarr", "radarr": "Radarr", "seerr": "Seerr", "qbittorrent": "qBittorrent", "jellyfin": "Jellyfin"}
+SERVICES = {"sonarr": "Sonarr", "radarr": "Radarr", "seerr": "Seerr", "qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "prowlarr": "Prowlarr"}
 REQUIRED = ("sonarr", "radarr", "qbittorrent", "jellyfin")
+OPTIONAL = ("seerr", "prowlarr")
 SECRET_KEYS = ("api_key", "password")  # never sent back to the browser
-API_SUFFIX = {"sonarr": "/api/v3", "radarr": "/api/v3", "seerr": "/api/v1"}
-BEHAVIOR_DEFAULTS = {"import_exclusion": True, "remove_from_seerr": True, "unmonitor": True, "remove_episode_files": True}
+API_SUFFIX = {"sonarr": "/api/v3", "radarr": "/api/v3", "seerr": "/api/v1", "prowlarr": "/api/v1"}
+BEHAVIOR_DEFAULTS = {"import_exclusion": True, "remove_from_seerr": True, "unmonitor": True, "remove_episode_files": True,
+                     "cross_seed_with_original": False}
 LOW_SPACE_DEFAULTS = {"enabled": False, "min_free_gb": 100}
 
 
@@ -642,12 +644,8 @@ def torrents(**q):
 _roots = {"t": 0, "dirs": []}
 
 
-def library_path(p):
-    """History keeps the path at import time. If a library root folder moved since (e.g. /media/Movies -> /data/Media/Movies),
-    find the file under the current root folder of the same name."""
-    p = local(p)
-    if not p or os.path.exists(p):
-        return p
+def root_dirs():
+    """Sonarr/Radarr root folders as this container sees them (refreshed every 5 minutes)."""
     if time.time() - _roots["t"] > 300:
         c, dirs = cfg(), []
         for app in ("sonarr", "radarr"):
@@ -656,7 +654,16 @@ def library_path(p):
             except Exception:
                 pass
         _roots.update(t=time.time(), dirs=dirs)
-    for root in _roots["dirs"]:
+    return _roots["dirs"]
+
+
+def library_path(p):
+    """History keeps the path at import time. If a library root folder moved since (e.g. /media/Movies -> /data/Media/Movies),
+    find the file under the current root folder of the same name."""
+    p = local(p)
+    if not p or os.path.exists(p):
+        return p
+    for root in root_dirs():
         name = "/" + os.path.basename(root) + "/"
         i = p.find(name)
         if i >= 0:
@@ -668,42 +675,235 @@ def import_map(max_age=300):
     """torrent hash -> library imports recorded by Sonarr/Radarr ({app, path, movieId, seriesId, episodeId})."""
     if time.time() - _imports["t"] < max_age:
         return _imports["map"]
-    c, m = cfg(), {}
+    c, m, owner = cfg(), {}, {}
     for app in ("sonarr", "radarr"):
         a, page = Arr(c[app]), 1
-        while True:
-            r = a("GET", "/history", page=page, pageSize=1000, eventType=3)  # 3 = downloadFolderImported
+        while True:  # newest first, so the first import seen for a path is the one that's there now
+            r = a("GET", "/history", page=page, pageSize=1000, eventType=3, sortKey="date", sortDirection="descending")  # 3 = downloadFolderImported
             for h in r["records"]:
                 if h.get("downloadId"):
+                    path = library_path((h.get("data") or {}).get("importedPath"))
                     m.setdefault(h["downloadId"].lower(), []).append(
-                        {"app": app, "path": library_path((h.get("data") or {}).get("importedPath")), "movieId": h.get("movieId"),
-                         "seriesId": h.get("seriesId"), "episodeId": h.get("episodeId")})
+                        {"app": app, "path": path, "movieId": h.get("movieId"), "seriesId": h.get("seriesId"), "episodeId": h.get("episodeId")})
+                    if path:
+                        owner.setdefault(path, h["downloadId"].lower())
             if page * 1000 >= r["totalRecords"]:
                 break
             page += 1
-    _imports.update(t=time.time(), map=m)
+    _imports.update(t=time.time(), map=m, owner=owner)
     return m
 
 
+def import_owner(max_age=300):
+    """library path -> hash of the torrent it was last imported from."""
+    import_map(max_age)
+    return _imports.get("owner", {})
+
+
+def file_key(p):
+    """A file's identity on disk. Hardlinks to the same data share it, whatever their paths."""
+    try:
+        st = os.stat(p)
+        return st.st_dev, st.st_ino
+    except OSError:
+        return None
+
+
+def nlink(p):
+    try:
+        return os.stat(p).st_nlink
+    except OSError:
+        return 0
+
+
+_libidx = {"t": 0, "map": {}, "ok": False}
+
+
+def library_index(max_age=300):
+    """(device, inode) -> path, for every video file in the Sonarr/Radarr root folders."""
+    if time.time() - _libidx["t"] > max_age:
+        m, dirs = {}, root_dirs()
+        for root in dirs:
+            for d, _, fs in os.walk(root):
+                for p in videos_in(os.path.join(d, f) for f in fs):
+                    if k := file_key(p):
+                        m[k] = p
+        _libidx.update(t=time.time(), map=m, ok=any(os.path.isdir(r) for r in dirs))
+    return _libidx["map"]
+
+
+def torrent_keys(t):
+    return {k for p in videos_in(files_under(t["content_path"])) if (k := file_key(p))}
+
+
+def own_imports(h, max_age=60):
+    """Library paths Sonarr/Radarr imported from torrent h that still exist and weren't replaced by a later import
+    (an upgrade from another download)."""
+    owner = import_owner(max_age)
+    return {i["path"] for i in import_map(max_age).get(h, []) if i["path"] and owner.get(i["path"]) == h and os.path.exists(i["path"])}
+
+
 def in_library(t, max_age=0):
-    """Library files that came from this torrent and still exist: hardlinked copies, or (for RAR releases,
-    whose extracted copy isn't linked to the torrent) the paths Sonarr/Radarr imported it to."""
+    """How many library files are this torrent's: library files that are the same file on disk as one of the torrent's
+    (hardlinks), or, for RAR releases (whose extracted copy isn't linked to the torrent), the paths Sonarr/Radarr last
+    imported from it. A cross-seed of the same release counts too, since it shares the files."""
     hit = _lib_cache.get(t["hash"])
     if hit and time.time() - hit[0] < max_age:
         return hit[1]
-    cp = t["content_path"]
-    paths = [cp] if os.path.isfile(cp) else [os.path.join(d, f) for d, _, fs in os.walk(cp) for f in fs]
-    linked = 0
-    for p in paths:
-        if p.lower().endswith(VIDEO) and "sample" not in os.path.basename(p).lower():
-            try:
-                linked += os.stat(p).st_nlink > 1
-            except FileNotFoundError:
-                pass
-    imported = {i["path"] for i in import_map(max(max_age, 60)).get(t["hash"], []) if i["path"] and os.path.exists(i["path"])}
-    n = max(linked, len(imported))
+    idx, linked = library_index(), 0
+    for p in videos_in(files_under(t["content_path"])):
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        k = (st.st_dev, st.st_ino)
+        if st.st_nlink > 1 and k not in idx and time.time() - _libidx["t"] > 60:
+            idx = library_index(60)  # maybe imported since the last scan
+        if not _libidx["ok"]:
+            linked += st.st_nlink > 1  # library folders unknown (Sonarr/Radarr unreachable): any second link counts
+        elif k in idx and file_key(idx[k]) == k:
+            linked += 1
+    n = max(linked, len(own_imports(t["hash"], max(max_age, 60))))
     _lib_cache[t["hash"]] = (time.time(), n)
     return n
+
+
+_groups = {"t": 0, "map": {}}
+
+
+def cross_seed_groups(ts, max_age=60):
+    """hash -> every torrent sharing at least one video file with it: cross-seeds, the same release from other trackers,
+    seeding from the same data or hardlinks to it. Torrents that share nothing aren't listed."""
+    if time.time() - _groups["t"] < max_age:
+        return _groups["map"]
+    parent, first = {}, {}
+
+    def root(x):
+        while parent.setdefault(x, x) != x:
+            parent[x] = x = parent[parent[x]]
+        return x
+    for t in ts:
+        for k in torrent_keys(t):
+            if k in first:
+                parent[root(t["hash"])] = root(first[k])
+            else:
+                first[k] = t["hash"]
+    sets = {}
+    for h in list(parent):
+        sets.setdefault(root(h), set()).add(h)
+    m = {h: g for g in sets.values() if len(g) > 1 for h in g}
+    _groups.update(t=time.time(), map=m)
+    return m
+
+
+def group_original(g, ts):
+    """The torrent of a cross-seed group that Sonarr/Radarr imported (else the oldest). The others are its cross-seeds."""
+    imap = import_map()
+    added = lambda h: (ts.get(h) or {}).get("added_on", 0)
+    g = [h for h in g if h in ts] or g  # ts loses torrents as they're deleted
+    tracked = [h for h in g if h in imap]
+    return min(tracked or g, key=added)
+
+
+def remove_torrents(hashes, ts):
+    """Delete torrents from qBittorrent with their data, except when another torrent that stays still seeds from the same
+    files (a cross-seed sharing the folder): then the torrent goes but the data stays. Removed torrents are taken out of
+    ts. Returns ({hash: bytes freed}, {hashes whose data was kept})."""
+    hashes = {h for h in hashes if h in ts}
+    keep_paths, keep_keys = set(), set()
+    for x, t in ts.items():
+        if x not in hashes:
+            for p in files_under(t["content_path"]):
+                keep_paths.add(os.path.realpath(p))
+                if k := file_key(p):
+                    keep_keys.add(k)
+    freed, with_data, without, seen = {}, [], [], set()
+    for h in hashes:
+        t, n = ts[h], 0
+        paths = files_under(t["content_path"])
+        (without if any(os.path.realpath(p) in keep_paths for p in paths) else with_data).append(h)
+        for p in paths:
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            k = (st.st_dev, st.st_ino)
+            if k not in keep_keys and k not in seen:
+                seen.add(k)
+                n += st.st_size
+        freed[h] = n if paths else t["size"]
+    if with_data:
+        qcall("/torrents/delete", {"hashes": "|".join(with_data), "deleteFiles": "true"})
+    if without:
+        qcall("/torrents/delete", {"hashes": "|".join(without), "deleteFiles": "false"})
+    for h in hashes:
+        ts.pop(h, None)
+    return freed, set(without)
+
+
+_indexers = {"t": 0, "by_hash": {}, "prowlarr": []}
+_tnames = {"t": 0, "map": {}}
+
+
+def indexer_info(max_age=600):
+    """Which indexer (tracker site) each torrent was grabbed from, from Sonarr/Radarr's grab history, plus the torrent
+    indexers set up in Prowlarr."""
+    if time.time() - _indexers["t"] < max_age:
+        return _indexers
+    c, by_hash, prow = cfg(), {}, []
+    for app in ("sonarr", "radarr"):
+        try:
+            a, page = Arr(c[app]), 1
+            while True:
+                r = a("GET", "/history", page=page, pageSize=1000, eventType=1)  # 1 = grabbed
+                for h in r["records"]:
+                    name = re.sub(r"\s*\(Prowlarr\)$", "", (h.get("data") or {}).get("indexer") or "")
+                    if h.get("downloadId") and name:
+                        by_hash.setdefault(h["downloadId"].lower(), name)
+                if page * 1000 >= r["totalRecords"]:
+                    break
+                page += 1
+        except Exception:
+            pass
+    if (c.get("prowlarr") or {}).get("url"):
+        try:
+            for i in Arr(c["prowlarr"])("GET", "/indexer"):
+                if i.get("protocol") == "torrent":
+                    urls = [f.get("value") for f in i.get("fields", []) if f.get("name") == "baseUrl"] + (i.get("indexerUrls") or [])
+                    hosts = [urllib.parse.urlparse(u).hostname for u in urls if u]
+                    prow.append({"name": i["name"], "hosts": sorted({h[4:] if h.startswith("www.") else h for h in hosts if h})})
+        except Exception as e:
+            print("prowlarr:", e, flush=True)
+    _indexers.update(t=time.time(), by_hash=by_hash, prowlarr=prow)
+    return _indexers
+
+
+def site_of(host):
+    """tracker.example.org -> example.org (good enough to match an announce host to a Prowlarr site)."""
+    parts = (host or "").split(".")
+    return ".".join(parts[-3:] if len(parts) > 2 and len(parts[-1]) == 2 and len(parts[-2]) <= 3 else parts[-2:])
+
+
+def tracker_names(ts=None, max_age=60):
+    """hash -> tracker name (e.g. TorrentDay). From the grab history; torrents that weren't grabbed by Sonarr/Radarr get
+    the name other torrents with the same announce host have, or a Prowlarr indexer on the same site."""
+    if ts is None and time.time() - _tnames["t"] < max_age:
+        return _tnames["map"]
+    if ts is None:
+        ts = torrents()
+    info, by_host, out = indexer_info(), {}, {}
+    for t in ts:
+        if n := info["by_hash"].get(t["hash"]):
+            by_host.setdefault(tracker_host(t), []).append(n)
+    by_host = {h: max(set(ns), key=ns.count) for h, ns in by_host.items()}
+    by_site = {site_of(h): i["name"] for i in info["prowlarr"] for h in i["hosts"]}
+    for t in ts:
+        host = tracker_host(t)
+        n = info["by_hash"].get(t["hash"]) or by_host.get(host) or by_site.get(site_of(host))
+        if n:
+            out[t["hash"]] = n
+    _tnames.update(t=time.time(), map=out)
+    return out
 
 
 def overrides(con):
@@ -751,8 +951,9 @@ def rule_for(t, ov, c, title=None):
         return {**ov[t["hash"]], "source": "this torrent"}
     extra = c.get("rule_list", [])
     host = tracker_host(t)
+    tname = (tracker_names().get(t["hash"]) or "").casefold() if any(r.get("type") == "tracker" for r in extra) else ""
     for kind, test in (("title", lambda m: title and m.casefold() == title.casefold()),
-                       ("tracker", lambda m: host and (host == m or host.endswith("." + m))),
+                       ("tracker", lambda m: (host and (host == m or host.endswith("." + m))) or (tname and tname == m.casefold())),
                        ("category", lambda m: t.get("category") == m)):
         for r in extra:
             if r.get("type") == kind and r.get("match") and test(r["match"]):
@@ -819,20 +1020,44 @@ def capture_restore(t):
     return out
 
 
-def record_cleanup(t, name, reason, restore=None):
+def record_cleanup(t, name, reason, restore=None, size=None):
     with db() as con:
         con.execute("insert into cleaned (ts, name, size, title, category, reason, hash, restore) values (?,?,?,?,?,?,?,?)",
-                    (time.time(), t["name"], t["size"], title_of(t["hash"], name) or name, t.get("category"), reason, t["hash"],
-                     json.dumps(restore) if restore else None))
+                    (time.time(), t["name"], t["size"] if size is None else size, title_of(t["hash"], name) or name, t.get("category"),
+                     reason, t["hash"], json.dumps(restore) if restore else None))
 
 
-def check(c, t, name, r, added=None):
-    """Returns a status string, or None once the torrent is gone. r is the rule that applies."""
+def cross_seed_of(h, ts, grp):
+    """The original torrent if h is a cross-seed of another torrent, else None."""
+    g = grp.get(h)
+    orig = g and group_original(g, ts)
+    return orig if orig and orig != h and orig in ts else None
+
+
+def cleanup_torrents(batch, ts, grp, name, reason):
+    """Delete these torrents (one, or an original with its cross-seeds), keeping History and Redownload info.
+    Returns [(torrent, bytes freed, data kept)]."""
+    gone = [(ts[h], cross_seed_of(h, ts, grp)) for h in batch if h in ts]
+    restores = {t["hash"]: ({"cross_seed_of": ts[o]["name"]} if o else capture_restore(t)) for t, o in gone}
+    freed, kept = remove_torrents([t["hash"] for t, _ in gone], ts)
+    for t, o in gone:
+        record_cleanup(t, name, reason, restores[t["hash"]], freed.get(t["hash"]))
+    return [(t, freed.get(t["hash"], 0), t["hash"] in kept) for t, _ in gone]
+
+
+def check(c, t, name, r, added=None, ctx=None):
+    """Returns a status string, or None once the torrent is gone. r is the rule that applies. ctx carries all torrents,
+    the cross-seed groups, what's queued, and collects torrents that went along with this one."""
     if not t:
         log(f"torrent for {name} is gone from qBittorrent; dropping it from the queue")
         return None
     if t["progress"] < 1:
         return "still downloading"
+    ctx = ctx or {"ts": {t["hash"]: t}, "groups": {}, "pending": set(), "removed": set()}
+    ts, grp, together = ctx["ts"], ctx["groups"], behavior()["cross_seed_with_original"]
+    orig = cross_seed_of(t["hash"], ts, grp)
+    if orig and together and orig in ctx["pending"]:
+        return f"cross-seed: deleted together with '{ts[orig]['name']}'"
     progress, met = evaluate(r, t)
     left = in_library(t)
     if left:
@@ -842,15 +1067,40 @@ def check(c, t, name, r, added=None):
     wait = (added or 0) + grace_seconds() - time.time()
     if added and wait > 0:
         return f"deletion delay: deletes in {duration(wait)} (Undo still possible); {progress}"
+    batch = [t["hash"]]
+    if together and not orig:
+        batch += sorted(x for x in grp.get(t["hash"], ()) if x != t["hash"] and x in ctx["pending"] and x in ts)
     if c.get("dry_run"):
-        log(f"[dry run] would have deleted torrent '{t['name']}' and its data ({progress})")
+        log(f"[dry run] would have deleted torrent '{t['name']}' and its data ({progress})"
+            + (f", with {len(batch) - 1} cross-seed{'s' * (len(batch) > 2)}" if len(batch) > 1 else ""))
         return f"[dry run] ready to delete; {progress}"
-    restore = capture_restore(t)
-    qcall("/torrents/delete", {"hashes": t["hash"], "deleteFiles": "true"})
-    log(f"deleted torrent '{t['name']}' and its data ({progress})")
-    record_cleanup(t, name, "seeding rule met", restore)
-    notify("Torrent cleaned up", f"{name}\n{t['name']} · {human(t['size'])} freed ({progress})", "cleanup")
+    for x, freed, kept in cleanup_torrents(batch, ts, grp, name, "seeding rule met"):
+        log(f"deleted torrent '{x['name']}'" + (" (its data stays: another torrent still seeds from it)" if kept else " and its data")
+            + (f" ({progress})" if x is t else " (cross-seed, together with the original)"))
+        notify("Torrent cleaned up", f"{name}\n{x['name']} · {human(freed)} freed" + (f" ({progress})" if x is t else " (cross-seed)"), "cleanup")
+        if x is not t:
+            ctx["removed"].add(x["hash"])
     return None
+
+
+def queue_cross_seeds(rows, ts, grp):
+    """Cross-seeds of torrents waiting for cleanup are cleaned up too (each by its own seeding rule, unless Settings say
+    they go together with the original)."""
+    pend, new = {h for h, _, _ in rows}, []
+    for h, name, _ in rows:
+        for x in sorted(grp.get(h, ())):
+            if x not in pend and x in ts:
+                pend.add(x)
+                new.append((x, name))
+    if new:
+        with db() as con:
+            for x, name in new:
+                con.execute("insert or ignore into pending (hash, name, source, added_at, status) values (?,?,?,?,?)",
+                            (x, name, "cross-seed", time.time(), "queued"))
+        for x, name in new:
+            log(f"  cross-seed '{ts[x]['name']}'" + (f" ({tracker_host(ts[x])})" if tracker_host(ts[x]) else "")
+                + f" of {name} queued for cleanup too")
+    return bool(new)
 
 
 def sweep():
@@ -869,15 +1119,25 @@ def sweep():
         if ts:  # forget rules of torrents that no longer exist
             with db() as con:
                 con.executemany("delete from overrides where hash=?", [(h,) for h in ov if h not in ts])
+        grp = cross_seed_groups(ts.values(), 0)
+        if queue_cross_seeds(rows, ts, grp):
+            with db() as con:
+                rows = con.execute("select hash, name, added_at from pending order by added_at").fetchall()
+        ctx = {"ts": ts, "groups": grp, "pending": {h for h, _, _ in rows}, "removed": set()}
         for h, name, added in rows:
+            if h in ctx["removed"]:
+                with db() as con:
+                    con.execute("delete from pending where hash=?", (h,))
+                continue
             t = ts.get(h)
             try:
-                status = check(c, t, name, rule_for(t, ov, c, title_of(h, name)) if t else None, added)
+                status = check(c, t, name, rule_for(t, ov, c, title_of(h, name)) if t else None, added, ctx)
             except Exception as e:
                 status = f"error: {e}"
             with db() as con:
                 if status is None:
                     con.execute("delete from pending where hash=?", (h,))
+                    ctx["pending"].discard(h)
                 else:
                     con.execute("update pending set status=? where hash=?", (status, h))
         low_space_pass(c, ts, ov)
@@ -917,12 +1177,10 @@ def low_space_pass(c, ts, ov):
             log(f"[dry run] low disk space ({free:.0f} GB free): would have deleted '{t['name']}' early")
             continue
         log(f"Low disk space ({free:.0f} GB free, minimum {ls['min_free_gb']:g} GB): deleting '{t['name']}' early")
-        restore = capture_restore(t)
-        qcall("/torrents/delete", {"hashes": h, "deleteFiles": "true"})
-        record_cleanup(t, name, "low disk space", restore)
+        [(_, freed, _)] = cleanup_torrents([h], ts, cross_seed_groups(ts.values()), name, "low disk space")
         with db() as con:
             con.execute("delete from pending where hash=?", (h,))
-        notify("Torrent cleaned up early", f"Low disk space: {t['name']} · {human(t['size'])} freed", "cleanup")
+        notify("Torrent cleaned up early", f"Low disk space: {t['name']} · {human(freed)} freed", "cleanup")
         time.sleep(3)
         free = free_gb(ts)
         if free is not None and free >= ls["min_free_gb"]:
@@ -994,13 +1252,12 @@ def seerr_step(c, kind, tmdb, title):
     return (f"Remove '{title}' from Seerr", lambda: s("DELETE", f"/media/{info['id']}")) if info else None
 
 
-def build_plan(c, h):
-    """Everything 'Delete now' would remove for torrent h, as [(description, action)]."""
-    steps = []
-    t = (torrents(hashes=h) or [None])[0]
-    imps = import_map(0).get(h, [])
-    # Jellyfin: the library files this torrent was imported to (or, for unmanaged torrents like Courses, its own folder)
-    targets = {tail(i["path"]) for i in imps if i["path"] and os.path.exists(i["path"])}
+def media_steps(c, paths, movies=(), series=()):
+    """Steps that remove media everywhere: the library files at paths from Jellyfin (which deletes them), movies from
+    Radarr (and Seerr), and episodes in Sonarr (unmonitored, file records removed; the series itself stays so new
+    episodes keep coming). series = [(series, [episodes])]."""
+    steps, bh = [], behavior()
+    targets = {tail(p) for p in paths}
     if targets:
         items = jellyfin("GET", "/Items", recursive="true", fields="Path", includeItemTypes="Movie,Episode,Video",
                          enableImages="false", enableUserData="false")["Items"]
@@ -1013,16 +1270,53 @@ def build_plan(c, h):
             steps.append((f"Delete {', '.join(labels)} from Jellyfin (and its library files)",
                           lambda hits=hits: [jf_delete(i["Id"]) for i in hits]))
     radarr, sonarr = Arr(c["radarr"]), Arr(c["sonarr"])
+    for m in movies:
+        excl = bh["import_exclusion"]
+        steps.append((f"Remove '{m['title']}' from Radarr, with its files" + (" (and add an import exclusion)" if excl else ""),
+                      lambda m=m: radarr("DELETE", f"/movie/{m['id']}", deleteFiles="true", addImportExclusion=str(excl).lower())))
+        if bh["remove_from_seerr"]:
+            steps.append(seerr_step(c, "movie", m.get("tmdbId"), m["title"]))
+    for s, mine in series:
+        label = f"'{s['title']}' {episodes_label(mine)}"
+        ids = sorted(e["id"] for e in mine)
+        if bh["unmonitor"]:
+            steps.append((f"Unmonitor {label} in Sonarr", lambda ids=ids: sonarr("PUT", "/episode/monitor", {"episodeIds": ids, "monitored": False})))
+        files = sorted({e["episodeFileId"] for e in mine if e.get("episodeFileId")})
+        if files:
+            steps.append((f"Remove {label} files from Sonarr",
+                          lambda files=files: sonarr("DELETE", "/episodefile/bulk", {"episodeFileIds": files})))
+    return [x for x in steps if x]
+
+
+def build_plan(c, h):
+    """Everything 'Delete now' would remove for torrent h: (torrent, [(description, action)], info). An action of None is
+    only a note. Only movies and episodes whose current file came from this torrent (or its cross-seeds) are touched:
+    if Sonarr/Radarr has since upgraded one to a file from another download, it's left alone."""
+    ts = {x["hash"]: x for x in torrents()}
+    t = ts.get(h)
+    group = sorted(cross_seed_groups(ts.values(), 0).get(h, {h}) if t else {h}, key=lambda x: x != h)
+    imap = import_map(0)
+    imps = [i for x in group for i in imap.get(x, [])]
+    keys = set().union(*[torrent_keys(ts[x]) for x in group if x in ts])
+    idx = library_index(0)
+    owner = import_owner(0)
+    paths = {p for k, p in idx.items() if k in keys} | {i["path"] for i in imps if i["path"] and owner.get(i["path"]) in group and os.path.exists(i["path"])}
+    verify = _libidx["ok"]  # library folders readable, so file ownership can be checked
+
+    def from_elsewhere(p):
+        """True if this library file exists and isn't one of this torrent's."""
+        return verify and bool(p) and os.path.exists(p) and file_key(p) not in keys and p not in paths
+    radarr, sonarr = Arr(c["radarr"]), Arr(c["sonarr"])
+    notes, movies, series = [], [], []
     for mid in sorted({i["movieId"] for i in imps if i["app"] == "radarr" and i["movieId"]}):
         try:
             m = radarr("GET", f"/movie/{mid}")
         except urllib.error.HTTPError:
             continue
-        excl = behavior()["import_exclusion"]
-        steps.append((f"Remove '{m['title']}' from Radarr, with its files" + (" (and add an import exclusion)" if excl else ""),
-                      lambda m=m: radarr("DELETE", f"/movie/{m['id']}", deleteFiles="true", addImportExclusion=str(excl).lower())))
-        if behavior()["remove_from_seerr"]:
-            steps.append(seerr_step(c, "movie", m.get("tmdbId"), m["title"]))
+        if m.get("hasFile") and from_elsewhere(local((m.get("movieFile") or {}).get("path"))):
+            notes.append((f"Keep '{m['title']}' in Radarr and Jellyfin: its current file came from a different download", None))
+        else:
+            movies.append(m)
     by_series = {}
     for i in imps:
         if i["app"] == "sonarr" and i["episodeId"]:
@@ -1032,34 +1326,146 @@ def build_plan(c, h):
             s = sonarr("GET", f"/series/{sid}")
         except urllib.error.HTTPError:
             continue
-        eps = sonarr("GET", "/episode", seriesId=sid)
-        mine = [e for e in eps if e["id"] in epids]
-        label = f"'{s['title']}' {episodes_label(mine)}"
-        # Episodes only: the series stays in Sonarr (and Seerr) so new episodes keep coming, even if none are left on disk.
-        # Removing a whole show is done by deleting the series in Jellyfin.
-        ids = sorted(e["id"] for e in mine)
-        if behavior()["unmonitor"]:
-            steps.append((f"Unmonitor {label} in Sonarr", lambda ids=ids: sonarr("PUT", "/episode/monitor", {"episodeIds": ids, "monitored": False})))
-        files = sorted({e["episodeFileId"] for e in mine if e.get("episodeFileId")})
-        if files:
-            steps.append((f"Remove {label} files from Sonarr",
-                          lambda files=files: sonarr("DELETE", "/episodefile/bulk", {"episodeFileIds": files})))
-    if t:
-        steps.append((f"Delete torrent '{t['name']}' and its downloaded data from qBittorrent",
-                      lambda: qcall("/torrents/delete", {"hashes": h, "deleteFiles": "true"})))
-        if not imps:  # not managed by Sonarr/Radarr (e.g. Courses, which Jellyfin reads straight from the download folder)
-            steps.append(("Rescan the Jellyfin library so it drops the deleted files", lambda: jellyfin("POST", "/Library/Refresh")))
-    return t, [x for x in steps if x]
+        eps = [e for e in sonarr("GET", "/episode", seriesId=sid) if e["id"] in epids]
+        fpath = {f["id"]: local(f["path"]) for f in sonarr("GET", "/episodefile", seriesId=sid)} if any(e.get("episodeFileId") for e in eps) else {}
+        other = [e for e in eps if e.get("episodeFileId") and from_elsewhere(fpath.get(e["episodeFileId"]))]
+        if other:
+            notes.append((f"Keep '{s['title']}' {episodes_label(other)} in Sonarr and Jellyfin: "
+                          f"{'their current files' if len(other) > 1 else 'its current file'} came from a different download", None))
+        mine = [e for e in eps if e not in other]
+        if mine:
+            series.append((s, mine))
+    steps = media_steps(c, paths, movies, series) + notes
+    freed = {}
+    for x in group:
+        if x in ts:
+            what = "cross-seed torrent" if x != h else "torrent"
+            steps.append((f"Delete {what} '{ts[x]['name']}'" + (f" ({tracker_host(ts[x])})" if x != h and tracker_host(ts[x]) else "")
+                          + " and its downloaded data from qBittorrent", lambda x=x: freed.update(remove_torrents([x], ts)[0])))
+    if t and not imps:  # not managed by Sonarr/Radarr (e.g. Courses, which Jellyfin reads straight from the download folder)
+        steps.append(("Rescan the Jellyfin library so it drops the deleted files", lambda: jellyfin("POST", "/Library/Refresh")))
+    return t, steps, {"group": [x for x in group if x in ts], "ts": dict(ts), "freed": freed}
 
 
 def delete_now(h):
     c = cfg()
     try:
-        t, steps = build_plan(c, h)
+        t, steps, info = build_plan(c, h)
     except Exception as e:
         return log(f"Delete now failed while planning: {e!r}")
     log(f"Delete now: {t['name'] if t else h}")
-    restore = capture_restore(t) if t and not c.get("dry_run") else None
+    all_ts, group = info["ts"], info["group"]
+    restores = {x: ({"cross_seed_of": t["name"]} if x != h else capture_restore(all_ts[x])) for x in group} if not c.get("dry_run") else {}
+    for desc, fn in steps:
+        if fn is None:
+            log(f"  {desc}")
+        elif c.get("dry_run"):
+            log(f"  [dry run] would: {desc}")
+        else:
+            try:
+                fn()
+                log(f"  done: {desc}")
+            except Exception as e:
+                log(f"  FAILED: {desc}: {e}")
+    if not c.get("dry_run"):
+        with db() as con:
+            for x in group or [h]:
+                con.execute("delete from pending where hash=?", (x,))
+                con.execute("delete from overrides where hash=?", (x,))
+        for x in group:
+            if x in info["freed"]:
+                record_cleanup(all_ts[x], t["name"], "Delete now", restores.get(x), info["freed"][x])
+        _imports["t"] = _libidx["t"] = _groups["t"] = 0
+        if t:
+            notify("Deleted now", f"{t['name']} · {human(sum(info['freed'].values()))} freed", "cleanup")
+
+
+# ---------- media with no torrent ----------
+
+_orphans = {"t": 0, "items": []}
+
+
+def torrent_file_check():
+    """A function telling whether a library file still belongs to a torrent in qBittorrent: it is one of a torrent's
+    files (hardlink), or it was last imported from a torrent that's still there (RAR releases). Files that can't be
+    read count as belonging, so nothing is offered for deletion by mistake."""
+    ts = torrents()
+    hashes = {t["hash"] for t in ts}
+    keys = set().union(*[torrent_keys(t) for t in ts])
+    owner = import_owner(60)
+
+    def has_torrent(p):
+        k = file_key(p)
+        return k is None or k in keys or owner.get(p) in hashes
+    return has_torrent
+
+
+def media_without_torrent(max_age=300):
+    """Movies and seasons in Sonarr/Radarr whose files don't come from any torrent in qBittorrent anymore, biggest first."""
+    if time.time() - _orphans["t"] < max_age:
+        return _orphans
+    c, has_torrent, items = cfg(), torrent_file_check(), []
+    for m in Arr(c["radarr"])("GET", "/movie"):
+        f = m.get("movieFile")
+        if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
+            items.append({"id": f"radarr:{m['id']}", "app": "radarr", "title": m["title"], "year": m.get("year"), "what": "Movie",
+                          "size": f.get("size") or 0, "files": 1, "linked": nlink(p) > 1, "path": p})
+    sonarr = Arr(c["sonarr"])
+    for s in sonarr("GET", "/series"):
+        if not (s.get("statistics") or {}).get("episodeFileCount"):
+            continue
+        lone = {f["id"]: f for f in sonarr("GET", "/episodefile", seriesId=s["id"]) if not has_torrent(local(f["path"]))}
+        if not lone:
+            continue
+        eps = [e for e in sonarr("GET", "/episode", seriesId=s["id"]) if e.get("episodeFileId") in lone]
+        for sn in sorted({f["seasonNumber"] for f in lone.values()}):
+            fs = [f for f in lone.values() if f["seasonNumber"] == sn]
+            items.append({"id": f"sonarr:{s['id']}:{sn}", "app": "sonarr", "title": s["title"], "year": s.get("year"),
+                          "what": episodes_label([e for e in eps if e["seasonNumber"] == sn]) or f"Season {sn}",
+                          "size": sum(f.get("size") or 0 for f in fs), "files": len(fs),
+                          "linked": any(nlink(local(f["path"])) > 1 for f in fs), "path": os.path.dirname(local(fs[0]["path"]))})
+    items.sort(key=lambda x: -x["size"])
+    _orphans.update(t=time.time(), items=items)
+    return _orphans
+
+
+def orphan_plan(c, ids):
+    """Delete steps for items from media_without_torrent (checked again, in case a torrent showed up meanwhile).
+    Returns (steps, [(label, size, restore info)])."""
+    has_torrent, radarr, sonarr = torrent_file_check(), Arr(c["radarr"]), Arr(c["sonarr"])
+    paths, movies, series, done = set(), [], [], []
+    for i in ids:
+        app, *rest = str(i).split(":")
+        if app == "radarr" and rest:
+            m = radarr("GET", f"/movie/{int(rest[0])}")
+            f = m.get("movieFile")
+            if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
+                paths.add(p)
+                movies.append(m)
+                done.append((m["title"], f.get("size") or 0 if nlink(p) <= 1 else 0,
+                             {"movie": {k: m.get(k) for k in MOVIE_KEYS}, "episodes": []}))
+        elif app == "sonarr" and len(rest) == 2:
+            sid, sn = int(rest[0]), int(rest[1])
+            s = sonarr("GET", f"/series/{sid}")
+            lone = {f["id"]: f for f in sonarr("GET", "/episodefile", seriesId=sid)
+                    if f["seasonNumber"] == sn and not has_torrent(local(f["path"]))}
+            eps = [e for e in sonarr("GET", "/episode", seriesId=sid) if e.get("episodeFileId") in lone]
+            if eps:
+                paths |= {local(f["path"]) for f in lone.values()}
+                series.append((s, eps))
+                done.append((f"{s['title']} {episodes_label(eps)}", sum(f.get("size") or 0 for f in lone.values() if nlink(local(f["path"])) <= 1),
+                             {"series": {**{k: s.get(k) for k in SERIES_KEYS}, "seasons": [[x["seasonNumber"], x["monitored"]] for x in s["seasons"]]},
+                              "episodes": sorted([e["seasonNumber"], e["episodeNumber"]] for e in eps)}))
+    return media_steps(c, paths, movies, series), done
+
+
+def delete_orphans(ids):
+    c = cfg()
+    try:
+        steps, done = orphan_plan(c, ids)
+    except Exception as e:
+        return log(f"Deleting media with no torrent failed while planning: {e!r}")
+    log(f"Delete media with no torrent: {', '.join(x[0] for x in done) or 'nothing left to delete'}")
     for desc, fn in steps:
         if c.get("dry_run"):
             log(f"  [dry run] would: {desc}")
@@ -1069,15 +1475,14 @@ def delete_now(h):
             log(f"  done: {desc}")
         except Exception as e:
             log(f"  FAILED: {desc}: {e}")
-    if not c.get("dry_run"):
+    if not c.get("dry_run") and done:
         with db() as con:
-            con.execute("delete from pending where hash=?", (h,))
-            con.execute("delete from overrides where hash=?", (h,))
-        if t:
-            record_cleanup(t, t["name"], "Delete now", restore)
-        _imports["t"] = 0
-        if t:
-            notify("Deleted now", f"{t['name']} · {human(t['size'])} freed", "cleanup")
+            for label, size, restore in done:
+                con.execute("insert into cleaned (ts, name, size, title, category, reason, hash, restore) values (?,?,?,?,?,?,?,?)",
+                            (time.time(), label, size, label, None, "no torrent", None,
+                             json.dumps({"hash": None, "name": label, "category": None, "movie": None, "series": None, **restore})))
+        _orphans["t"] = _imports["t"] = _libidx["t"] = 0
+        notify("Deleted media with no torrent", f"{', '.join(x[0] for x in done)} · {human(sum(x[1] for x in done))} freed", "cleanup")
 
 
 # ---------- Undo ----------
@@ -1351,8 +1756,14 @@ def do_undo(h):
         step(lambda: ensure_series(arr, snap))
     else:
         step(lambda: remonitor(arr, snap))
+    try:
+        grp = cross_seed_groups(torrents(), 0)
+    except Exception:
+        grp = {}
+    sibs = {x for h0, _, _ in rows for x in grp.get(h0, ())} - {x for x, _, _ in rows}
     with db() as con:  # off the cleanup list first, so a sweep can't delete them while they're being restored
         con.executemany("delete from pending where hash=?", [(x,) for x, _, _ in rows])
+        con.executemany("delete from pending where hash=? and source='cross-seed'", [(x,) for x in sibs])
     log(f"  done: took {len(rows)} torrent{'s' * (len(rows) != 1)} off the cleanup list")
     ok = True
     for x, name, _ in rows:
@@ -1384,29 +1795,56 @@ def torrents_json():
     imap = import_map()
     grace = grace_seconds()
     out, raw = [], torrents()
+    by_hash = {t["hash"]: t for t in raw}
+    grp = cross_seed_groups(raw)
+    tnames = tracker_names(raw)
+    together = behavior()["cross_seed_with_original"]
     for t in raw:
         h = t["hash"]
+        orig = cross_seed_of(h, by_hash, grp)
         name = pend[h][0] if h in pend else None
-        title = title_of(h, name)
+        title = title_of(h, name) or (title_of(orig) if orig else None)
         r = rule_for(t, ov, c, title)
         progress, met = evaluate(r, t)
         lib = in_library(t, max_age=60)
+        managed = h in imap or any(x in imap for x in grp.get(h, ()))
         out.append({"hash": h, "name": t["name"], "title": title, "category": t["category"], "tracker": tracker_host(t),
+                    "tracker_name": tnames.get(h), "cross_seed_of": by_hash[orig]["name"] if orig else None,
+                    "cross_seeds": len(grp.get(h, ())) - 1 if h in grp and not orig else 0,
+                    "with_original": bool(orig and together and orig in pend),
                     "state": t["state"], "progress": t["progress"],
                     "ratio": t["ratio"], "seeding_days": t["seeding_time"] / 86400, "upspeed": t["upspeed"], "dlspeed": t["dlspeed"],
                     "size": t["size"], "added_on": t["added_on"], "rule": {k: r[k] for k in ("mode", "min_seed_days", "min_ratio")},
                     "rule_source": r["source"], "custom": h in ov, "rule_progress": progress,
-                    "rule_met": met, "tracked": h in imap,
+                    "rule_met": met, "tracked": managed,
                     "days_met": t["seeding_time"] / 86400 >= r["min_seed_days"]
                     if r["mode"] not in ("ratio", "never") and r.get("min_seed_days") is not None else None,
                     "ratio_met": t["ratio"] >= r["min_ratio"] if r["mode"] not in ("days", "never") and r.get("min_ratio") is not None else None,
-                    "in_library": lib, "leftover": h in imap and not lib and h not in pend and t["progress"] >= 1,
+                    "in_library": lib, "leftover": managed and not lib and h not in pend and t["progress"] >= 1,
                     "queued": h in pend, "queued_as": name, "status": pend[h][1] if h in pend else None,
                     "delete_after": pend[h][3] + grace if h in pend and grace else None,
                     "undo": None if h not in pend else ("ok" if pend[h][2] and restorable(t) else "no")})
     return {"default": default_rule(c), "dry_run": bool(c.get("dry_run")), "modes": MODES, "torrents": out,
             "freed": {"total": freed[0], "count": freed[1], "last30": freed30}, "health": health,
             "version": VERSION, "update": update_info, "free_gb": free_gb({t["hash"]: t for t in raw})}
+
+
+def tracker_choices(ts):
+    """Suggestions for tracker rules: tracker names (from Sonarr/Radarr's grab history and Prowlarr), then announce hosts."""
+    if not ts:
+        return []
+    names, hosts = tracker_names(ts), {}
+    for t in ts:
+        if host := tracker_host(t):
+            hosts.setdefault(host, set()).add(names.get(t["hash"]))
+    by_name = {}
+    for t in ts:
+        if n := names.get(t["hash"]):
+            by_name.setdefault(n, set()).add(tracker_host(t))
+    out = [{"value": n, "label": f"{n} · {', '.join(sorted(h - {''}))}"} for n, h in sorted(by_name.items(), key=lambda x: x[0].casefold())]
+    out += [{"value": i["name"], "label": f"{i['name']} · Prowlarr, no torrents yet"} for i in indexer_info()["prowlarr"] if i["name"] not in by_name]
+    out += [{"value": h, "label": h + (f" · {', '.join(sorted(n - {None}))}" if n - {None} else "")} for h, n in sorted(hosts.items())]
+    return out
 
 
 # ---------- connections, health, updates ----------
@@ -1421,7 +1859,7 @@ def test_service(svc, conf):
     url = (conf or {}).get("url", "").strip().rstrip("/")
     if not url:
         raise RuntimeError("no address set")
-    if svc in ("sonarr", "radarr"):
+    if svc in ("sonarr", "radarr", "prowlarr"):
         r = Arr({"url": api_url(svc, url), "api_key": conf.get("api_key", "")})("GET", "/system/status")
         return f"{r.get('appName', SERVICES[svc])} {r.get('version', '')}".strip()
     if svc == "seerr":
@@ -1526,7 +1964,7 @@ def history(q=""):
         if q and q not in (r[2] or "").casefold() and q not in (r[4] or "").casefold():
             continue
         out.append({"id": r[0], "ts": r[1], "name": r[2], "size": r[3], "title": r[4], "category": r[5], "reason": r[6],
-                    "redownloaded": r[9], "redownload_how": r[10],
+                    "redownloaded": r[9], "redownload_how": r[10], "cross_seed_of": (json.loads(r[8]) if r[8] else {}).get("cross_seed_of"),
                     "saved_torrent": bool(r[7]) and os.path.isfile(os.path.join(TORRENT_DIR, (r[7] or "") + ".torrent"))})
     return out
 
@@ -1548,6 +1986,8 @@ def resolve_redownload(row_id):
     name, category, h, restore, title = r
     if restore:
         info = json.loads(restore)
+        if info.get("cross_seed_of"):
+            raise RuntimeError(f"it was a cross-seed of '{info['cross_seed_of']}'. Redownload that one instead")
         if info.get("movie") or info.get("series"):
             info["app"] = "radarr" if info.get("movie") else "sonarr"
             return info
@@ -1863,11 +2303,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/plan":
             h = query.get("hash", [""])[0]
             try:
-                t, steps = build_plan(cfg(), h)
+                t, steps, _ = build_plan(cfg(), h)
             except Exception as e:
                 return self.reply(502, f"could not build the plan: {e}")
             return self.reply(200, json.dumps({"name": t["name"] if t else h, "steps": [d for d, _ in steps],
+                                               "notes": [d for d, fn in steps if fn is None],
                                                "dry_run": bool(cfg().get("dry_run"))}), "application/json")
+        if path == "/api/orphans":
+            try:
+                o = media_without_torrent(0 if query.get("refresh") else 300)
+            except Exception as e:
+                return self.reply(502, f"couldn't check the library: {e}")
+            return self.reply(200, json.dumps({"items": o["items"], "ts": o["t"]}), "application/json")
+        if path == "/api/orphan-plan":
+            try:
+                steps, done = orphan_plan(cfg(), query.get("ids", [""])[0].split(","))
+            except Exception as e:
+                return self.reply(502, f"could not build the plan: {e}")
+            return self.reply(200, json.dumps({"steps": [d for d, _ in steps], "items": [x[0] for x in done],
+                                               "size": sum(x[1] for x in done)}), "application/json")
         if path == "/api/undo-plan":
             h = query.get("hash", [""])[0]
             try:
@@ -1913,7 +2367,7 @@ class Handler(BaseHTTPRequestHandler):
                                                "version": VERSION, "update": update_info, "repo": REPO,
                                                "webhook_url_guess": guess,
                                                "choices": {"categories": sorted({t["category"] for t in ts if t["category"]}),
-                                                           "trackers": sorted({tracker_host(t) for t in ts} - {""}),
+                                                           "trackers": tracker_choices(ts),
                                                            "titles": sorted(set(titles()["series"].values()) | set(titles()["movies"].values()), key=str.casefold) if ts else []},
                                                "free_gb": free_gb({t["hash"]: t for t in ts}),
                                                "notify": notify_cfg(), "policy": policy(), "restore": {"enabled": restore_enabled()},
@@ -2022,7 +2476,7 @@ class Handler(BaseHTTPRequestHandler):
                 old = c.get(svc) or {}
                 new = {k: str(v).strip() for k, v in conf.items() if k in ("url", "api_key", "username", "password")}
                 if not new.get("url"):
-                    if svc == "seerr":
+                    if svc in OPTIONAL:
                         c.pop(svc, None)
                     continue
                 for k in SECRET_KEYS:
@@ -2033,7 +2487,7 @@ class Handler(BaseHTTPRequestHandler):
             save_cfg(c)
             global _qb
             _qb = None
-            _imports["t"] = _titles["t"] = 0
+            _imports["t"] = _titles["t"] = _indexers["t"] = _roots["t"] = _libidx["t"] = 0
             log("Connection settings saved")
             threading.Thread(target=check_health, daemon=True).start()
             return self.reply(200, "ok")
@@ -2155,6 +2609,10 @@ class Handler(BaseHTTPRequestHandler):
             if not tried:
                 return self.reply(400, "Add at least one service first, and save.")
             return self.reply(502 if errs else 200, "; ".join(errs) or "Sent to " + ", ".join(tried))
+        if path == "/api/orphans/delete":
+            ids = [str(x) for x in json.loads(body).get("ids", [])]
+            threading.Thread(target=delete_orphans, args=(ids,), daemon=True).start()
+            return self.reply(202, "started")
         if path in ("/api/undo", "/api/delete-now"):
             f = json.loads(body)
             hs = f.get("hashes") or [f.get("hash", "")]

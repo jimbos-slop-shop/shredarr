@@ -39,8 +39,10 @@ T = [
     ("Spring.2019.2160p.WEB-DL.HDR.HEVC", "Spring", "movies-radarr", 4.3, 1.52, 16.9, 0, 1, False, {"mode": "never"}),
     ("The.Night.Garden.S03E01.720p.HDTV.x264", "The Night Garden", "tv-sonarr", 0.8, 2.61, 30.2, 0, 1, False, None),
     ("Agent.327.Operation.Barbershop.2017.1080p", "Agent 327", "movies-radarr", 0.9, 0.12, 0.4, 0, 0, False, None),
+    ("Big.Buck.Bunny.2008.1080p.BluRay.x264", "Big Buck Bunny", "movies-radarr", 1.9, 1.12, 20.1, 18, 1, False, None),  # cross-seed of row 0
 ]
 TRACKERS = ["tracker.example.org", "opentracker.example.net"]
+TRACKER_NAMES = {"tracker.example.org": "ExampleTracker", "opentracker.example.net": "OpenExample"}
 
 
 def demo_torrents():
@@ -52,6 +54,8 @@ def demo_torrents():
         r = {**own, "min_seed_days": None, "min_ratio": None, "source": "this torrent"} if own else s.rule_for(t, {}, c, title)
         progress, met = s.evaluate(r, t)
         out.append({"hash": t["hash"], "name": name, "title": title, "category": cat, "tracker": TRACKERS[i % 2],
+                    "tracker_name": TRACKER_NAMES[TRACKERS[i % 2]], "cross_seed_of": T[0][0] if i == 11 else None,
+                    "cross_seeds": 1 if i == 0 else 0, "with_original": False,
                     "state": "uploading" if up else ("downloading" if i == 7 else "stalledUP"), "progress": t["progress"],
                     "ratio": ratio, "seeding_days": days, "upspeed": up * 1024, "dlspeed": 4.2 * 2**20 if i == 7 else 0,
                     "size": int(size * GB), "added_on": int(NOW - (days + 1) * DAY), "rule": {k: r.get(k) for k in ("mode", "min_seed_days", "min_ratio")},
@@ -65,6 +69,18 @@ def demo_torrents():
             "update": s.update_info, "free_gb": 1830}
 
 
+ORPHANS = [("radarr:1", "radarr", "Caminandes", 2013, "Movie", 3.1, 1, "/data/media/movies/Caminandes (2013)"),
+           ("sonarr:4:1", "sonarr", "Paper Moons", 2019, "S01E01-E10 (10 episodes)", 14.2, 10, "/data/media/tv/Paper Moons/Season 01"),
+           ("sonarr:4:2", "sonarr", "Paper Moons", 2019, "S02E01-E08 (8 episodes)", 11.6, 8, "/data/media/tv/Paper Moons/Season 02"),
+           ("radarr:2", "radarr", "Glass Half", 2015, "Movie", 1.4, 1, "/data/media/movies/Glass Half (2015)")]
+s.media_without_torrent = lambda max_age=300: {"t": NOW, "items": sorted(
+    [{"id": i, "app": a, "title": t, "year": y, "what": w, "size": int(g * GB), "files": f, "linked": False, "path": p}
+     for i, a, t, y, w, g, f, p in ORPHANS], key=lambda x: -x["size"])}
+s.orphan_plan = lambda c, ids: ([(f"Delete {', '.join(repr(x[2]) for x in ORPHANS if x[0] in ids)} from Jellyfin (and its library files)", None)]
+                                + [(f"Remove '{x[2]}' from Radarr, with its files (and add an import exclusion)", None) for x in ORPHANS if x[0] in ids and x[1] == "radarr"]
+                                + [(f"Unmonitor '{x[2]}' {x[4]} in Sonarr", None) for x in ORPHANS if x[0] in ids and x[1] == "sonarr"],
+                                [(x[2], int(x[5] * GB), {}) for x in ORPHANS if x[0] in ids])
+s.delete_orphans = lambda ids: None
 s.torrents_json = demo_torrents
 s.torrents = lambda **q: []
 s.titles = lambda: {"t": NOW, "series": {1: "The Lighthouse Keepers", 2: "Harbor Lights", 3: "The Night Garden"},

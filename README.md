@@ -20,8 +20,14 @@ your seeding rule is met, then removes the torrent and its download, with an **U
 - **Seeding rules.** Keep seeding until a minimum seed time and/or ratio is reached ("either", "both", "time
   only", "ratio only"), with extra rules per **category**, **show or movie**, or **tracker**, plus per-torrent
   overrides. Mark anything **Never delete** to protect it.
+- **Tracker rules by name.** Trackers are named the way Sonarr/Radarr and Prowlarr know them ("TorrentDay"), so one
+  rule covers all of a tracker's announce addresses. Connect Prowlarr to see trackers you have no torrents from yet.
 - **Season packs are safe.** A torrent is only removed once *none* of its files are left in your library, so
   deleting one episode never breaks seeding for the rest of the pack. Works for hardlinked and RAR releases.
+  Library files are matched to torrents by their identity on disk, not by name.
+- **Cross-seed aware.** Cross-seeds (the same release seeding from other trackers, from the same data or hardlinked
+  to it) are found automatically and cleaned up along with the original: each after its own tracker's seeding
+  rule, or all together. Data another torrent still seeds from is never deleted out from under it.
 - **Undo.** Changed your mind? While the torrent is still seeding, Undo re-adds the item to Sonarr/Radarr with its
   old settings and re-imports the file. RAR releases are unpacked again with the built-in unpacker.
 - **Redownload.** Already gone for good? Every cleanup in History has a **Redownload** button: Shredarr puts the
@@ -29,7 +35,10 @@ your seeding rule is met, then removes the torrent and its download, with an **U
   keeps a copy of each `.torrent`) or lets Sonarr/Radarr **search again**. Season packs and complete series come
   back as packs.
 - **Deletion delay.** Optionally wait hours or days before removing a torrent, so there is always time to Undo.
-- **Delete now.** Remove a torrent and its media everywhere immediately, with a preview of every step.
+- **Delete now.** Remove a torrent and its media everywhere immediately, with a preview of every step. If
+  Sonarr/Radarr has since upgraded a movie or episode to a file from a different download, that one is left alone.
+- **Media with no torrent.** Lists movies and seasons in your library whose torrent is gone (so they aren't
+  seeding anymore), biggest first, and deletes them everywhere in one go.
 - **Low disk space override.** Below a free-space threshold, waiting torrents go early, oldest first.
 - **Leftover finder.** Spots torrents whose media is no longer in your library and lets you clean them up.
 - **History.** Everything that was cleaned up, with sizes and a running "space freed" total.
@@ -48,6 +57,8 @@ your seeding rule is met, then removes the torrent and its download, with an **U
 | **Torrents:** seeding progress toward each rule, where the rule comes from, and what happens next. | **History:** what was cleaned up and why, with Redownload. |
 | <img src="docs/settings.png" alt="Settings: connections"> | <img src="docs/bulk-delete.png" alt="Bulk Delete now"> |
 | **Settings:** connection status, one-click Jellyfin webhook setup, rules, notifications. | **Bulk actions:** select several torrents, preview, confirm. |
+| <img src="docs/no-torrent.png" alt="Media with no torrent"> | <img src="docs/cross-seed.png" alt="Cross-seeds in the torrent list"> |
+| **No torrent:** library media that isn't seeding anymore, ready to clean up. | **Cross-seeds:** found automatically and cleaned up with the original. |
 
 <p align="center"><img src="docs/phone-settings.png" alt="Shredarr on a phone" width="300"></p>
 
@@ -56,7 +67,7 @@ The screenshots use made-up demo data; see [Try the demo](#try-the-demo).
 ## Requirements
 
 - **Jellyfin** with the **Webhook** plugin (Dashboard → Plugins → Catalog → *Webhook*).
-- **Sonarr** and/or **Radarr**, and **qBittorrent**. **Seerr** is optional.
+- **Sonarr** and/or **Radarr**, and **qBittorrent**. **Seerr** and **Prowlarr** are optional.
 - Shredarr must be able to see your **downloads and library** folders. The simplest setup is the common
   "one `/data` folder" layout (downloads and media on the same disk, imported with hardlinks), mounted into
   Shredarr at the same path your other apps use. If the paths differ, add a **path mapping** in Settings.
@@ -109,10 +120,10 @@ as a delete, so weekly shows don't disappear from Sonarr when you delete their l
 
 | Section | What it does |
 |---|---|
-| Connections | App addresses and keys, connection status, Jellyfin webhook setup, path mappings |
+| Connections | App addresses and keys (Seerr and Prowlarr are optional), connection status, Jellyfin webhook setup, path mappings |
 | Seeding rules | Extra rules by show/movie, tracker or category; "Never delete" protects |
 | Notifications | Discord, ntfy, Pushover, and which events to send |
-| Cleanup behavior | Import exclusions, Seerr removal, unmonitoring, episode file records |
+| Cleanup behavior | Import exclusions, Seerr removal, unmonitoring, episode file records, cross-seeds |
 | Deletion delay | Minimum wait before a torrent is removed (time to Undo) |
 | Low disk space | Delete waiting torrents early when free space runs low |
 | RAR restore | Unpack RAR releases again for Undo |

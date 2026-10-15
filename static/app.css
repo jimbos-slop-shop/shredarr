@@ -2312,3 +2312,94 @@ table.hist td.act {
   #rows td.act button.undo span { display: inline; }
   #rows td[data-l="Status"] .badge { max-width: none; }
 }
+
+/* media with no torrent */
+.bar .upd.grow {
+  margin-left: 0;
+  margin-right: auto;
+}
+.bar .upd.grow:empty::before {
+  display: none;
+}
+.help.pad {
+  margin: 0;
+  padding: 0 16px 12px;
+}
+table.orph td.path {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mut);
+  font-size: 12.5px;
+}
+table.orph td.act {
+  width: 60px;
+}
+#nrows td.n {
+  min-width: 260px;
+}
+table.orph td.n .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+#delsteps li.keep {
+  color: var(--mut);
+  font-style: italic;
+}
+@media (max-width: 760px) {
+  .tablepanel .tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tablepanel .tabs {
+    gap: 0;
+  }
+  .tablepanel .tabs button {
+    flex: 1 0 auto;
+    padding: 0 7px;
+    font-size: 13.5px;
+  }
+  .tablepanel .tabs .n {
+    padding: 1px 6px;
+  }
+  #ncount {
+    display: none;
+  }
+  table.orph thead {
+    display: none;
+  }
+  #nrows tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    position: relative;
+  }
+  #nrows td {
+    border: 0;
+    padding: 0;
+  }
+  #nrows td.n {
+    min-width: 0;
+    grid-column: 1 / -1;
+    padding-right: 28px;
+  }
+  #nrows td.path {
+    max-width: none;
+    white-space: normal;
+    word-break: break-all;
+  }
+  #nrows td.act {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    align-self: center;
+    width: auto;
+  }
+}

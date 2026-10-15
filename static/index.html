@@ -107,6 +107,10 @@
     <div class="field"><label>URL</label><div><input name="seerr.url" placeholder="http://seerr:5055" autocomplete="off"><small>Jellyseerr or Overseerr. Leave blank if you don't use one.</small></div></div>
     <div class="field"><label>API key</label><div><input name="seerr.api_key" type="password" autocomplete="off"></div></div>
     <div class="btnrow"><button type="button" class="ctest">Test</button></div></div>
+  <div class="conn" data-svc="prowlarr"><div class="conn-h"><i class="dot"></i><b>Prowlarr</b><small class="opt">optional</small><small class="cstate"></small></div>
+    <div class="field"><label>URL</label><div><input name="prowlarr.url" placeholder="http://prowlarr:9696" autocomplete="off"><small>Lists your trackers by name for tracker rules, even before you have a torrent from them.</small></div></div>
+    <div class="field"><label>API key</label><div><input name="prowlarr.api_key" type="password" autocomplete="off"><small>Prowlarr → Settings → General → API Key</small></div></div>
+    <div class="btnrow"><button type="button" class="ctest">Test</button></div></div>
 </div>
 <div class="btnrow"><button class="p"><svg class="i"><use href="#i-check"/></svg>Save connections</button></div>
 </form>
@@ -122,6 +126,7 @@
 
 <section class="sbox wide"><h3><span class="ic violet"><svg class="i"><use href="#i-list"/></svg></span>Seeding rules</h3>
 <p class="help">Give some torrents a different rule than the default. The first rule that matches wins, in this order: a torrent's own rule, then <b>show or movie</b>, then <b>tracker</b>, then <b>category</b>, then the default rule on the dashboard. "Never delete" protects matching torrents.</p>
+<p class="help">A <b>tracker</b> rule matches the tracker's name (for example <i>TorrentDay</i>, as Sonarr/Radarr and Prowlarr call it), which covers all of its announce addresses, or one announce host.</p>
 <form id="lform"><div class="rlist" id="rlist"></div>
 <datalist id="dl-category"></datalist><datalist id="dl-title"></datalist><datalist id="dl-tracker"></datalist>
 <div class="btnrow"><button type="button" id="addrule"><svg class="i"><use href="#i-plus"/></svg>Add rule</button><button class="p">Save rules</button></div></form>
@@ -161,6 +166,7 @@
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Remove it from Seerr" name="remove_from_seerr"><span><b>Remove it from Seerr</b><small>So it can be requested again later.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Unmonitor deleted episodes" name="unmonitor"><span><b>Unmonitor deleted episodes and seasons</b><small>Otherwise Sonarr may download them again.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Remove episode file records" name="remove_episode_files"><span><b>Remove deleted episodes' file records</b><small>Keeps Sonarr's view of your library accurate straight away.</small></span></div>
+<div class="sw-row"><input type="checkbox" class="sw" aria-label="Delete cross-seeds together with the original" name="cross_seed_with_original"><span><b>Delete cross-seeds together with the original</b><small>Cross-seeds (the same release seeding from other trackers) are always cleaned up with the original. When this is off, each one first waits for its own tracker's seeding rule.</small></span></div>
 </form></section>
 
 <section class="sbox"><h3><span class="ic green"><svg class="i"><use href="#i-clock"/></svg></span>Deletion delay</h3>
@@ -219,13 +225,13 @@
 <div class="sentence"><svg class="i"><use href="#i-info"/></svg><span id="sentence"></span></div></form></section>
 
 <section class="panel tablepanel dash">
-<nav class="tabs"><button id="tab-t">Torrents <span class="n" id="count">–</span></button><button id="tab-a">Activity</button><button id="tab-h">History</button></nav>
+<nav class="tabs"><button id="tab-t">Torrents <span class="n" id="count">–</span></button><button id="tab-a">Activity</button><button id="tab-h">History</button><button id="tab-n" title="Library media whose torrent is gone">No torrent <span class="n" id="ncount" hidden></span></button></nav>
 <div id="pane-t"><div class="bar"><div class="search"><svg class="i"><use href="#i-search"/></svg><input type="search" id="q" placeholder="Search torrents"></div>
 <select id="cat"><option value="">All categories</option></select>
 <select id="msort" class="mobile"><option value="">Sort: default</option><option value="added:-1">Newest added</option><option value="added:1">Oldest added</option>
 <option value="name:1">Name A–Z</option><option value="ratio:-1">Highest ratio</option><option value="ratio:1">Lowest ratio</option>
 <option value="seeded:-1">Longest seeded</option><option value="seeded:1">Shortest seeded</option><option value="rule:-1">Seeding rule met first</option><option value="status:1">Status</option></select>
-<select id="show"><option value="">All torrents</option><option value="queued">Deleted in Jellyfin</option><option value="met">Seeding rule met</option><option value="leftover">Leftovers</option><option value="protected">Protected</option><option value="custom">Custom rule</option><option value="active">Transferring</option></select>
+<select id="show"><option value="">All torrents</option><option value="queued">Deleted in Jellyfin</option><option value="met">Seeding rule met</option><option value="leftover">Leftovers</option><option value="crossseed">Cross-seeds</option><option value="protected">Protected</option><option value="custom">Custom rule</option><option value="active">Transferring</option></select>
 <button id="checknow"><svg class="i"><use href="#i-refresh"/></svg><span>Check now</span></button><span class="upd" id="upd">Loading…</span></div>
 <div class="wrap"><table><thead><tr><th data-k="name"><input type="checkbox" id="selall" class="selbox" aria-label="Select all shown">Torrent</th><th data-k="added">Added</th><th data-k="state">State</th><th data-k="ratio">Ratio</th><th data-k="seeded">Seeded</th><th data-k="rule" title="Sort by seeding progress: rule met first, then closest to meeting it">Rule</th><th data-k="status">Status</th><th></th></tr></thead>
 <tbody id="rows"><tr class="sk"><td colspan="8"><div style="width:60%"></div></td></tr><tr class="sk"><td colspan="8"><div style="width:45%"></div></td></tr><tr class="sk"><td colspan="8"><div style="width:70%"></div></td></tr><tr class="sk"><td colspan="8"><div style="width:52%"></div></td></tr></tbody></table>
@@ -234,6 +240,10 @@
 <div id="pane-h" hidden><div class="bar"><div class="search"><svg class="i"><use href="#i-search"/></svg><input type="search" id="hq" placeholder="Search history"></div><span class="upd" id="hsum"></span></div>
 <div class="wrap"><table class="hist"><thead><tr><th>Cleaned up</th><th>Torrent</th><th>Size</th><th>Why</th><th></th></tr></thead><tbody id="hrows"></tbody></table>
 <div class="empty" id="hempty" hidden><img src="/logo.svg?v=4" alt=""><b>Nothing cleaned up yet</b>Torrents Shredarr deletes will be listed here.</div></div></div>
+<div id="pane-n" hidden><div class="bar"><span class="upd grow" id="nsum">Loading…</span><button id="nsel-del" class="danger" hidden><svg class="i"><use href="#i-trash"/></svg><span>Delete selected</span></button><button id="nrefresh"><svg class="i"><use href="#i-refresh"/></svg><span>Check again</span></button></div>
+<p class="help pad">Movies and episodes in your library whose torrent isn't in qBittorrent anymore, so they aren't seeding. Deleting one works like deleting it in Jellyfin: it's removed from Jellyfin and Radarr (or unmonitored in Sonarr), and the files are deleted.</p>
+<div class="wrap"><table class="hist orph"><thead><tr><th><input type="checkbox" id="nselall" class="selbox" aria-label="Select all">Media</th><th>Size</th><th>Folder</th><th></th></tr></thead><tbody id="nrows"></tbody></table>
+<div class="empty" id="nempty" hidden><img src="/logo.svg?v=4" alt=""><b>Everything has a torrent</b>Every movie and episode in your library still comes from a torrent in qBittorrent.</div></div></div>
 </section>
 <div class="how dash">
 <div class="step"><div class="num">1</div><b>Delete it in Jellyfin</b><p>A movie or series is removed from Radarr/Sonarr and Seerr. An episode or season is unmonitored so it isn't downloaded again.</p></div>
@@ -257,7 +267,7 @@
 <!-- ============================================================ dialogs -->
 <dialog id="del"><form method="dialog"><div class="dh"><div class="ic red"><svg class="i"><use href="#i-trash"/></svg></div><div><h3 tabindex="-1" autofocus>Delete now?</h3><p class="name" id="delname"></p></div></div>
 <p id="deldry" class="note warn" hidden><svg class="i"><use href="#i-alert"/></svg>Dry run is on, so this will only be logged.</p><ul id="delsteps"></ul>
-<p class="note m">The seeding rule is ignored. This can't be undone.</p>
+<p class="note m" id="delnote">The seeding rule is ignored. This can't be undone.</p>
 <div class="btns"><button value="cancel">Cancel</button><button class="danger" id="delgo" value="go" disabled><svg class="i"><use href="#i-trash"/></svg>Delete</button></div></form></dialog>
 <dialog id="und"><form method="dialog"><div class="dh"><div class="ic blue"><svg class="i"><use href="#i-undo"/></svg></div><div><h3 tabindex="-1" autofocus>Undo this delete?</h3><p class="name" id="undname"></p></div></div>
 <p class="note" style="color:var(--fg2)" id="undintro">Undo puts it back as if you never deleted it:</p><ul id="undsteps"></ul>

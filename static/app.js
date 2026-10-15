@@ -130,6 +130,7 @@ function status(t) {
     if (t.progress < 1) return ["Deleted · still downloading", "warn"];
     if (t.in_library) return [`Deleted · ${t.in_library} file${t.in_library > 1 ? "s" : ""} still in library`, "warn"];
     if (t.rule.mode === "never") return ["Deleted · protected, kept", "warn"];
+    if (t.with_original) return ["Deleted · goes with the original", "warn"];
     if (t.rule_met && t.delete_after && t.delete_after * 1000 > Date.now())
       return ["Deleted · deletion delay, removed in " + dur(t.delete_after - Date.now() / 1000), "warn"];
     if (t.rule_met) return [data.dry_run ? "Dry run: would delete next check" : "Deletes at next check", "ok"];
@@ -138,7 +139,7 @@ function status(t) {
   if (t.leftover) return ["Leftover · not in library", "warn"];
   return t.in_library
     ? [`In library · ${t.in_library} file${t.in_library > 1 ? "s" : ""}`, ""]
-    : [t.tracked ? "Not in library" : "Not managed by Sonarr/Radarr", "mut"];
+    : [t.tracked || t.cross_seed_of ? "Not in library" : "Not managed by Sonarr/Radarr", "mut"];
 }
 function setMeter(el, p, met) {
   if (p === null) return (el.className = "meter off");
@@ -188,6 +189,7 @@ function visible() {
     met: (t) => t.rule_met,
     custom: (t) => t.custom,
     leftover: (t) => t.leftover,
+    crossseed: (t) => t.cross_seed_of || t.cross_seeds,
     protected: (t) => t.rule.mode === "never",
     active: (t) => t.upspeed > 0 || t.dlspeed > 0,
   }[show];
@@ -236,8 +238,17 @@ function render() {
       meta[0].lastChild.textContent = cl;
       lastCat[t.hash] = t.category;
     }
-    setText(meta[1], size(t.size));
-    setText(meta[2], t.queued_as ? "deleted: " + t.queued_as : "");
+    setText(meta[1], size(t.size) + (t.tracker_name ? " · " + t.tracker_name : ""));
+    setText(
+      meta[2],
+      t.queued_as
+        ? "deleted: " + t.queued_as
+        : t.cross_seed_of
+          ? "cross-seed of " + (t.title || t.cross_seed_of)
+          : t.cross_seeds
+            ? `${t.cross_seeds} cross-seed${t.cross_seeds > 1 ? "s" : ""}`
+            : "",
+    );
     setText(meta[3], "added " + new Date(t.added_on * 1000).toLocaleDateString([], { month: "short", day: "numeric" }));
     setText(td[1], new Date(t.added_on * 1000).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }));
     const [sc, stx] = state(t),
@@ -268,8 +279,14 @@ function render() {
       chip.append(src + ruleText(r));
       if (t.rule_met) chip.insertAdjacentHTML("beforeend", icon("check", "ok"));
       chip.title =
-        src + ruleText(r) + " · " +
-        (t.rule_source === "default" ? "default rule" : t.custom ? "this torrent's own rule" : "from the seeding rule for " + t.rule_source);
+        src +
+        ruleText(r) +
+        " · " +
+        (t.rule_source === "default"
+          ? "default rule"
+          : t.custom
+            ? "this torrent's own rule"
+            : "from the seeding rule for " + t.rule_source);
     }
     const [s, c] = status(t);
     setText(td[6].firstChild, s, "badge " + c);
@@ -325,7 +342,14 @@ function renderStats() {
     setText($("upd-link"), `Update available: v${u.latest}`);
   }
 }
-const NAMES = { sonarr: "Sonarr", radarr: "Radarr", seerr: "Seerr", qbittorrent: "qBittorrent", jellyfin: "Jellyfin" };
+const NAMES = {
+  sonarr: "Sonarr",
+  radarr: "Radarr",
+  seerr: "Seerr",
+  qbittorrent: "qBittorrent",
+  jellyfin: "Jellyfin",
+  prowlarr: "Prowlarr",
+};
 
 function renderSetup() {
   $("setupbanner").hidden = false;
@@ -560,12 +584,33 @@ const sysOf = (s) =>
           : /qBittorrent/.test(s)
             ? ["qbit", "qBittorrent"]
             : ["", "Step"];
-let deleting = [];
+let deleting = [],
+  delKind = "torrents";
+function stepList(steps, notes) {
+  const list = $("delsteps");
+  list.textContent = "";
+  for (const s of steps) {
+    const li = document.createElement("li"),
+      tag = document.createElement("span"),
+      tx = document.createElement("span"),
+      keep = (notes || []).includes(s),
+      [c, l] = sysOf(keep ? s.replace(" and Jellyfin", "") : s);
+    tag.className = "sys " + c;
+    tag.textContent = l;
+    tx.textContent = s;
+    if (keep) li.className = "keep";
+    li.append(tag, tx);
+    list.append(li);
+  }
+}
 async function askDelete(hashes) {
   deleting = hashes;
+  delKind = "torrents";
   const list = $("delsteps");
   $("delgo").disabled = true;
   $("deldry").hidden = !data.dry_run;
+  $("delnote").textContent = "The seeding rule is ignored. This can't be undone.";
+  $("del").querySelector("h3").textContent = "Delete now?";
   if (hashes.length > 1) {
     const ts = data.torrents.filter((t) => hashes.includes(t.hash));
     $("delname").textContent = `${ts.length} torrents · ${size(ts.reduce((a, t) => a + t.size, 0))}`;
@@ -591,18 +636,7 @@ async function askDelete(hashes) {
     const r = await fetch("/api/plan?hash=" + hashes[0]);
     if (!r.ok) throw new Error(await r.text());
     const p = await r.json();
-    list.textContent = "";
-    for (const s of p.steps) {
-      const li = document.createElement("li"),
-        tag = document.createElement("span"),
-        tx = document.createElement("span"),
-        [c, l] = sysOf(s);
-      tag.className = "sys " + c;
-      tag.textContent = l;
-      tx.textContent = s;
-      li.append(tag, tx);
-      list.append(li);
-    }
+    stepList(p.steps, p.notes);
     if (!p.steps.length) list.innerHTML = '<li class="m">Nothing to delete.</li>';
     else $("delgo").disabled = false;
   } catch (e) {
@@ -615,6 +649,17 @@ async function askDelete(hashes) {
 }
 $("del").addEventListener("close", async () => {
   if ($("del").returnValue !== "go") return;
+  if (delKind === "orphans") {
+    try {
+      await postJSON("/api/orphans/delete", { ids: deleting });
+      nsel.clear();
+      toast("Deleting… follow along in Activity");
+      setTab("a");
+    } catch (e) {
+      toast("Delete failed: " + e.message, true);
+    }
+    return;
+  }
   try {
     await postJSON("/api/delete-now", { hashes: deleting });
     selected.clear();
@@ -689,20 +734,129 @@ $("und").addEventListener("close", async () => {
 });
 
 // ------------------------------------------------------------------ tabs: torrents / activity / history
-let tab = { "#activity": "a", "#history": "h" }[location.hash] || "t";
+let tab = { "#activity": "a", "#history": "h", "#no-torrent": "n" }[location.hash] || "t";
 function setTab(x) {
   tab = x;
-  for (const k of "tah") {
+  for (const k of "tahn") {
     $("pane-" + k).hidden = x !== k;
     $("tab-" + k).className = x === k ? "on" : "";
   }
-  history.replaceState(null, "", { a: "#activity", h: "#history" }[x] || location.pathname);
+  history.replaceState(null, "", { a: "#activity", h: "#history", n: "#no-torrent" }[x] || location.pathname);
   $("bulk").hidden = x !== "t" || !selected.size;
   refresh();
 }
 $("tab-t").onclick = () => setTab("t");
 $("tab-a").onclick = () => setTab("a");
 $("tab-h").onclick = () => setTab("h");
+$("tab-n").onclick = () => setTab("n");
+
+// ------------------------------------------------------------------ media with no torrent
+let orphans = null,
+  orphSig = "";
+const nsel = new Set();
+async function loadOrphans(force) {
+  if (force) setText($("nsum"), "Checking your library…");
+  try {
+    const r = await fetch("/api/orphans" + (force ? "?refresh=1" : ""));
+    if (!r.ok) throw new Error(await r.text());
+    orphans = (await r.json()).items;
+    renderOrphans();
+  } catch (e) {
+    setText($("nsum"), "Couldn't check the library: " + e.message);
+  }
+}
+function renderOrphans() {
+  const items = orphans || [];
+  for (const id of [...nsel]) if (!items.some((x) => x.id === id)) nsel.delete(id);
+  const pick = items.filter((x) => nsel.has(x.id));
+  setText(
+    $("nsum"),
+    items.length
+      ? `${items.length} item${items.length === 1 ? "" : "s"} with no torrent · ${size(items.reduce((a, x) => a + x.size, 0))}` +
+          (pick.length ? ` · ${pick.length} selected (${size(pick.reduce((a, x) => a + x.size, 0))})` : "")
+      : "",
+  );
+  setText($("ncount"), String(items.length));
+  $("ncount").hidden = !items.length;
+  $("nsel-del").hidden = !pick.length;
+  $("nempty").hidden = items.length > 0;
+  $("nselall").checked = items.length > 0 && pick.length === items.length;
+  const sig = JSON.stringify(items.map((x) => x.id + x.size));
+  if (sig === orphSig) {
+    for (const tr of $("nrows").children) tr.firstChild.firstChild.checked = nsel.has(tr.dataset.id);
+    return;
+  }
+  orphSig = sig;
+  $("nrows").replaceChildren(
+    ...items.map((x) => {
+      const tr = document.createElement("tr"),
+        [cc, ci, cl] = x.app === "radarr" ? ["movie", "film", "Movie"] : ["tv", "tv", "TV"];
+      tr.dataset.id = x.id;
+      tr.innerHTML =
+        '<td class="n"><input type="checkbox" class="selbox" aria-label="Select"><div class="t"></div><div class="meta"><span class="cat ' +
+        cc +
+        '">' +
+        icon(ci) +
+        "<span>" +
+        cl +
+        '</span></span><span class="sz"></span><span class="del-tag"></span></div></td>' +
+        '<td class="num" data-l="Size"></td><td class="path" data-l="Folder"></td>' +
+        `<td class="act"><button class="icon del" title="Delete" aria-label="Delete">${icon("trash")}</button></td>`;
+      const td = tr.children;
+      td[0].children[1].textContent = x.title + (x.year && x.app === "radarr" ? ` (${x.year})` : "");
+      td[0].children[2].children[1].textContent = x.app === "sonarr" ? x.what : x.files + " file";
+      td[0].children[2].children[2].textContent = x.linked ? "also hardlinked elsewhere: deleting may not free space" : "";
+      td[1].textContent = size(x.size);
+      td[2].textContent = x.path;
+      td[2].title = x.path;
+      const box = td[0].firstChild;
+      box.checked = nsel.has(x.id);
+      box.onchange = () => {
+        box.checked ? nsel.add(x.id) : nsel.delete(x.id);
+        renderOrphans();
+      };
+      td[3].firstChild.onclick = () => askDeleteOrphans([x.id]);
+      return tr;
+    }),
+  );
+}
+$("nselall").onchange = (e) => {
+  for (const x of orphans || []) e.target.checked ? nsel.add(x.id) : nsel.delete(x.id);
+  renderOrphans();
+};
+$("nrefresh").onclick = () => loadOrphans(true);
+$("nsel-del").onclick = () => askDeleteOrphans([...nsel]);
+async function askDeleteOrphans(ids) {
+  deleting = ids;
+  delKind = "orphans";
+  const list = $("delsteps"),
+    picked = (orphans || []).filter((x) => ids.includes(x.id));
+  $("delgo").disabled = true;
+  $("deldry").hidden = !(data && data.dry_run);
+  $("del").querySelector("h3").textContent = "Delete media with no torrent?";
+  $("delname").textContent =
+    picked.length === 1
+      ? picked[0].title + (picked[0].app === "sonarr" ? " " + picked[0].what : "")
+      : `${picked.length} items · ${size(picked.reduce((a, x) => a + x.size, 0))}`;
+  $("delnote").textContent = "The files are deleted from disk. This can't be undone, but History can redownload it.";
+  list.innerHTML = '<li class="m">Working out what will be removed…</li>';
+  $("del").showModal();
+  try {
+    const r = await fetch("/api/orphan-plan?ids=" + encodeURIComponent(ids.join(",")));
+    if (!r.ok) throw new Error(await r.text());
+    const p = await r.json();
+    stepList(p.steps);
+    if (!p.steps.length)
+      list.innerHTML = '<li class="m">Nothing to delete: these have a torrent again, or are already gone.</li>';
+    else $("delgo").disabled = false;
+  } catch (e) {
+    list.textContent = "";
+    const li = document.createElement("li");
+    li.className = "badc";
+    li.textContent = e.message;
+    list.append(li);
+  }
+}
 
 function lineClass(m) {
   if (/FAILED|error|failed/.test(m)) return "bad";
@@ -814,6 +968,10 @@ async function loadHistory() {
           ? `Redownload ${x.redownload_how === "same" ? "(same release)" : "(search)"} ${ago(x.redownloaded)}`
           : "";
         tr.children[4].firstChild.onclick = () => askRedownload(x);
+        if (x.cross_seed_of) {
+          tr.children[4].firstChild.hidden = true;
+          tr.children[1].lastChild.textContent = "cross-seed of " + x.cross_seed_of;
+        }
         return tr;
       }),
     );
@@ -890,7 +1048,8 @@ $("hq").oninput = () => {
   hqTimer = setTimeout(loadHistory, 250);
 };
 
-const refresh = () => (ON_SETTINGS ? null : tab === "a" ? loadLog() : tab === "h" ? loadHistory() : load());
+const refresh = () =>
+  ON_SETTINGS ? null : tab === "a" ? loadLog() : tab === "h" ? loadHistory() : tab === "n" ? loadOrphans() : load();
 
 // ------------------------------------------------------------------ settings page
 let settings = null;
@@ -927,7 +1086,7 @@ function renderConnections() {
     const dot = box.querySelector(".dot"),
       st = box.querySelector(".cstate");
     dot.className = "dot " + (!conf.url ? "" : h ? (h.ok ? "ok" : "bad") : "");
-    st.textContent = !conf.url ? (svc === "seerr" ? "" : "not set up") : h ? h.msg : "checking…";
+    st.textContent = !conf.url ? (svc === "seerr" || svc === "prowlarr" ? "" : "not set up") : h ? h.msg : "checking…";
     st.className = "cstate" + (h && !h.ok ? " badc" : "");
   }
   $("connbox").classList.toggle("needs", settings.missing.length > 0);
@@ -956,7 +1115,11 @@ function ruleRow(r = { type: "category", match: "", mode: "either", min_seed_day
   ra.value = r.min_ratio ?? "";
   const sync = () => {
     m.setAttribute("list", "dl-" + t.value);
-    m.placeholder = { category: "e.g. tv-sonarr", title: "e.g. Last Week Tonight", tracker: "e.g. tracker.example.org" }[t.value];
+    m.placeholder = {
+      category: "e.g. tv-sonarr",
+      title: "e.g. Last Week Tonight",
+      tracker: "e.g. TorrentDay or tracker.example.org",
+    }[t.value];
     d.disabled = mode.value === "ratio" || mode.value === "never";
     ra.disabled = mode.value === "days" || mode.value === "never";
   };
@@ -975,7 +1138,11 @@ function mapRow(m = { remote: "", local: "" }) {
   return div;
 }
 function fillList(id, items) {
-  $(id).replaceChildren(...items.map((v) => Object.assign(document.createElement("option"), { value: v })));
+  $(id).replaceChildren(
+    ...items.map((v) =>
+      Object.assign(document.createElement("option"), typeof v === "string" ? { value: v } : { value: v.value, label: v.label }),
+    ),
+  );
 }
 
 async function loadSettings() {
@@ -1274,6 +1441,7 @@ if (ON_SETTINGS) {
 } else {
   setTab(tab);
   if (tab !== "t") load();
+  if (tab !== "n") setTimeout(() => loadOrphans(), 3000); // for the count on the tab
 }
 setInterval(() => {
   if (!document.hidden && !$("dlg").open && !$("del").open && !$("und").open && !$("rdl").open) refresh();
