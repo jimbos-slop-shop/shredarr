@@ -1,0 +1,12 @@
+services:
+  shredarr:
+    image: ghcr.io/jschaef80/shredarr:latest
+    container_name: shredarr
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    environment:
+      - TZ=America/Chicago          # your time zone
+    volumes:
+      - ./shredarr:/config          # settings, history and the password hash
+      - /path/to/data:/data         # the same folder Sonarr/Radarr/qBittorrent see as /data

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+config/
+*.db
+config.json
+RESET-CODE.txt
+.DS_Store

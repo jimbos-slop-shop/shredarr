@@ -1,0 +1,154 @@
+<p align="center"><img src="static/logo.png" width="140" alt="Shredarr logo"></p>
+
+<h1 align="center">Shredarr</h1>
+<p align="center"><b>Delete it in Jellyfin, and it's gone everywhere.</b></p>
+
+When you delete a movie, show, season or episode in **Jellyfin**, Shredarr cleans it up everywhere else:
+**Sonarr / Radarr**, **Seerr** (Jellyseerr/Overseerr) and **qBittorrent**. It keeps the torrent seeding until
+your seeding rule is met, then removes the torrent and its download, with an **Undo** in the meantime and a
+**Redownload** afterwards.
+
+<p align="center"><img src="docs/dashboard-dark.png" alt="Shredarr dashboard" width="900"></p>
+
+---
+
+## Features
+
+- **One delete, everywhere.** Movies and whole shows are removed from Radarr/Sonarr (optionally with an import
+  exclusion) and Seerr. Single episodes and seasons are unmonitored in Sonarr so they aren't downloaded again,
+  while the show itself stays for future episodes.
+- **Seeding rules.** Keep seeding until a minimum seed time and/or ratio is reached ("either", "both", "time
+  only", "ratio only"), with extra rules per **category**, **show or movie**, or **tracker**, plus per-torrent
+  overrides. Mark anything **Never delete** to protect it.
+- **Season packs are safe.** A torrent is only removed once *none* of its files are left in your library, so
+  deleting one episode never breaks seeding for the rest of the pack. Works for hardlinked and RAR releases.
+- **Undo.** Changed your mind? While the torrent is still seeding, Undo re-adds the item to Sonarr/Radarr with its
+  old settings and re-imports the file. RAR releases are unpacked again with the built-in unpacker.
+- **Redownload.** Already gone for good? Every cleanup in History has a **Redownload** button: Shredarr puts the
+  movie or episodes back in Sonarr/Radarr (with their old settings), then either re-adds the **same release** (it
+  keeps a copy of each `.torrent`) or lets Sonarr/Radarr **search again**. Season packs and complete series come
+  back as packs.
+- **Deletion delay.** Optionally wait hours or days before removing a torrent, so there is always time to Undo.
+- **Delete now.** Remove a torrent and its media everywhere immediately, with a preview of every step.
+- **Low disk space override.** Below a free-space threshold, waiting torrents go early, oldest first.
+- **Leftover finder.** Spots torrents whose media is no longer in your library and lets you clean them up.
+- **History.** Everything that was cleaned up, with sizes and a running "space freed" total.
+- **Bulk actions.** Select many torrents to set a rule, protect, undo or delete them at once.
+- **Notifications.** Discord (custom name and avatar), ntfy and Pushover: cleanups, problems, undos, deletes and a
+  daily summary.
+- **Connection health.** Shredarr checks every app every few minutes and tells you when one becomes unreachable.
+- **A proper web UI.** Live torrent list, activity feed, light/dark theme, works great on phones (add it to your
+  home screen), password-protected with reset codes.
+
+## Screenshots
+
+| | |
+|---|---|
+| <img src="docs/torrents-dark.png" alt="Torrent list with seeding progress, rules and statuses"> | <img src="docs/history.png" alt="History with Redownload"> |
+| **Torrents:** seeding progress toward each rule, where the rule comes from, and what happens next. | **History:** what was cleaned up and why, with Redownload. |
+| <img src="docs/settings.png" alt="Settings: connections"> | <img src="docs/bulk-delete.png" alt="Bulk Delete now"> |
+| **Settings:** connection status, one-click Jellyfin webhook setup, rules, notifications. | **Bulk actions:** select several torrents, preview, confirm. |
+
+<p align="center"><img src="docs/phone-settings.png" alt="Shredarr on a phone" width="300"></p>
+
+The screenshots use made-up demo data; see [Try the demo](#try-the-demo).
+
+## Requirements
+
+- **Jellyfin** with the **Webhook** plugin (Dashboard → Plugins → Catalog → *Webhook*).
+- **Sonarr** and/or **Radarr**, and **qBittorrent**. **Seerr** is optional.
+- Shredarr must be able to see your **downloads and library** folders. The simplest setup is the common
+  "one `/data` folder" layout (downloads and media on the same disk, imported with hardlinks), mounted into
+  Shredarr at the same path your other apps use. If the paths differ, add a **path mapping** in Settings.
+
+## Install (Docker Compose)
+
+```yaml
+services:
+  shredarr:
+    image: ghcr.io/jschaef80/shredarr:latest
+    container_name: shredarr
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    environment:
+      - TZ=America/Chicago          # your time zone
+    volumes:
+      - ./shredarr:/config          # settings, history, saved .torrent files and the password hash
+      - /path/to/data:/data         # the same folder Sonarr/Radarr/qBittorrent see as /data
+```
+
+Then:
+
+1. Open `http://<your-server>:8089` and create a password.
+2. In **Settings → Connections**, enter the address and API key of Sonarr, Radarr, qBittorrent, Jellyfin (and
+   Seerr if you use it). Use **Test** on each one, then **Save connections**.
+3. Under **Jellyfin webhook**, enter the address Jellyfin can reach Shredarr at (for example
+   `http://192.168.1.10:8089`) and click **Set up Jellyfin webhook**.
+4. Pick your **default seeding rule** on the dashboard. Leave **Dry run** on until you've seen it do the right
+   thing in the Activity tab.
+
+> Shredarr writes into the `/data` mount only to unpack RAR releases for Undo (into a temporary folder next to the
+> download, removed afterwards). Library files and downloads are only deleted through Jellyfin, Sonarr/Radarr and
+> qBittorrent themselves.
+
+## How it works
+
+1. **You delete something in Jellyfin.** Jellyfin's Webhook plugin tells Shredarr (Jellyfin batches these, so it
+   can take up to about 90 seconds).
+2. **Sonarr/Radarr and Seerr are updated right away**, according to *Settings → Cleanup behavior*. Shredarr notes
+   which torrents the item came from (from Sonarr/Radarr's download history) and saves a snapshot for Undo.
+3. **The torrent keeps seeding** until none of its files are left in your library, its seeding rule is met and any
+   deletion delay has passed. Then the torrent and its downloaded data are deleted from qBittorrent, and the entry
+   moves to History, ready for Redownload.
+
+A deleted show or season whose folder still exists on disk is treated as Jellyfin tidying up an *empty* show, not
+as a delete, so weekly shows don't disappear from Sonarr when you delete their latest episode.
+
+## Settings at a glance
+
+| Section | What it does |
+|---|---|
+| Connections | App addresses and keys, connection status, Jellyfin webhook setup, path mappings |
+| Seeding rules | Extra rules by show/movie, tracker or category; "Never delete" protects |
+| Notifications | Discord, ntfy, Pushover, and which events to send |
+| Cleanup behavior | Import exclusions, Seerr removal, unmonitoring, episode file records |
+| Deletion delay | Minimum wait before a torrent is removed (time to Undo) |
+| Low disk space | Delete waiting torrents early when free space runs low |
+| RAR restore | Unpack RAR releases again for Undo |
+| Password | Change it, set password rules, sign out everywhere |
+
+## Security notes
+
+- The web UI needs a password. Sessions last 30 days; repeated wrong passwords are slowed down and blocked.
+- Forgot the password? **Forgot password?** on the sign-in page sends a one-time code to your notification
+  services and also writes it to `RESET-CODE.txt` in the config folder and the container log. You can also run
+  `docker exec shredarr python3 /app/shredarr.py set-password 'new password'`.
+- The Jellyfin webhook is authenticated with its own random token.
+- API keys and passwords are stored in `config.json` in your config folder (readable only by its owner) and are
+  never sent back to the browser. Tracker URLs are only ever shown as host names, never with your passkey.
+- Shredarr is meant for your home network. If you expose it to the internet, put it behind a reverse proxy with
+  HTTPS.
+
+## Try the demo
+
+Run Shredarr with made-up data (nothing is contacted or deleted), then open `http://localhost:8089` and sign in
+with the password `demo`:
+
+```sh
+git clone https://github.com/jschaef80/shredarr && cd shredarr
+docker run --rm -p 8089:8089 -v "$PWD/tools:/tools" ghcr.io/jschaef80/shredarr python3 /tools/demo.py
+```
+
+## Updating
+
+```sh
+docker compose pull shredarr && docker compose up -d shredarr
+```
+
+Shredarr shows a notice in the footer and under *Settings → About* when a new release is available (you can turn
+the check off there).
+
+## License
+
+[MIT](LICENSE)

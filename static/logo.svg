@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="body" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#2a3039"/>
+      <stop offset=".38" stop-color="#4a535f"/>
+      <stop offset=".62" stop-color="#3a424d"/>
+      <stop offset="1" stop-color="#20252d"/>
+    </linearGradient>
+    <linearGradient id="head" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#5d6773"/>
+      <stop offset="1" stop-color="#2b313a"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#0d1118"/>
+      <stop offset="1" stop-color="#151b26"/>
+    </linearGradient>
+    <clipPath id="win"><rect x="50" y="70" width="28" height="36" rx="4"/></clipPath>
+  </defs>
+
+  <!-- body -->
+  <path d="M27 56 H101 L96 116 Q95.5 121 90 121 H38 Q32.5 121 32 116 Z" fill="url(#body)" stroke="#6b7684" stroke-width="1.6"/>
+  <path d="M33 60 V114" stroke="#ffffff" stroke-opacity=".12" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- head with the feed slot -->
+  <rect x="21" y="42" width="86" height="17" rx="5" fill="url(#head)" stroke="#7a8593" stroke-width="1.6"/>
+  <rect x="38" y="46.5" width="52" height="5" rx="2.5" fill="#07090d"/>
+  <!-- film strip feeding down into the slot -->
+  <g>
+    <rect x="49" y="2" width="30" height="47" fill="#151920"/>
+    <g fill="#f2f4f7">
+      <rect x="51.5" y="4" width="4" height="4.5" rx=".8"/><rect x="51.5" y="12" width="4" height="4.5" rx=".8"/>
+      <rect x="51.5" y="20" width="4" height="4.5" rx=".8"/><rect x="51.5" y="28" width="4" height="4.5" rx=".8"/>
+      <rect x="51.5" y="36" width="4" height="4.5" rx=".8"/>
+      <rect x="72.5" y="4" width="4" height="4.5" rx=".8"/><rect x="72.5" y="12" width="4" height="4.5" rx=".8"/>
+      <rect x="72.5" y="20" width="4" height="4.5" rx=".8"/><rect x="72.5" y="28" width="4" height="4.5" rx=".8"/>
+      <rect x="72.5" y="36" width="4" height="4.5" rx=".8"/>
+    </g>
+    <g fill="#4f9cff">
+      <rect x="58" y="3" width="12" height="11" rx="1"/>
+      <rect x="58" y="17" width="12" height="11" rx="1"/>
+      <rect x="58" y="31" width="12" height="11" rx="1"/>
+    </g>
+  </g>
+
+  <!-- front lip of the slot, so the film disappears into it -->
+  <rect x="38" y="49" width="52" height="2.5" rx="1.2" fill="#07090d"/>
+  <circle cx="98" cy="50.5" r="2.2" fill="#4ade80"/>
+
+  <!-- front window with shredded film -->
+  <rect x="50" y="70" width="28" height="36" rx="4" fill="url(#glass)" stroke="#8a95a3" stroke-width="1.6"/>
+  <g clip-path="url(#win)" stroke-linecap="round" stroke-width="2.4">
+    <path d="M52 92 l7 -5 M60 98 l8 4 M66 90 l7 -4 M53 101 l6 3 M69 99 l6 -5 M57 87 l5 5" stroke="#4f9cff"/>
+    <path d="M55 96 l6 -3 M63 93 l4 6 M71 92 l4 4 M60 103 l7 -2 M66 104 l8 0" stroke="#f2f4f7" stroke-opacity=".85"/>
+    <path d="M50 106 Q64 96 78 106 Z" fill="#4f9cff" fill-opacity=".35" stroke="none"/>
+  </g>
+  <rect x="53" y="73" width="4" height="12" rx="2" fill="#ffffff" fill-opacity=".12"/>
+</svg>
