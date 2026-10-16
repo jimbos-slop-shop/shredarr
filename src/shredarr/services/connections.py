@@ -6,7 +6,7 @@ import threading
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from ..clients.base import NotConfigured, ServiceError, ServiceHTTPError
+from ..clients.base import NotConfigured, ServiceError, ServiceHTTPError, refuse_if_read_only
 from ..clients.jellyfin import JellyfinClient
 from ..clients.plex import PlexClient
 from ..clients.seerr import SeerrClient
@@ -132,12 +132,14 @@ class TorrentService:
         return next(iter(self.all(h)), None)
 
     def remove(self, hashes: list[str], with_data: bool) -> None:
+        refuse_if_read_only(self.connections.config.load().client_name)
         self._call(lambda c: c.remove(hashes, with_data))
 
     def export(self, h: str) -> bytes | None:
         return self._call(lambda c: c.export(h))
 
     def add(self, content: bytes, filename: str, category: str) -> None:
+        refuse_if_read_only(self.connections.config.load().client_name)
         self._call(lambda c: c.add(content, filename, category))
 
 

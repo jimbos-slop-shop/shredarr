@@ -9,7 +9,7 @@ import threading
 
 import httpx
 
-from ..clients.base import TIMEOUT
+from ..clients.base import TIMEOUT, read_only, refuse_if_read_only
 from ..config import JSON, ConfigStore
 
 log = logging.getLogger(__name__)
@@ -41,11 +41,14 @@ class Notifier:
         self.send_in_background(n, title, msg)
 
     def send_in_background(self, n: JSON, title: str, msg: str) -> None:
+        if read_only():  # a test copy stays quiet
+            return
         threading.Thread(target=self.send, args=(n, title, msg), daemon=True, name="notify").start()
 
     def send(self, n: JSON, title: str, msg: str) -> tuple[list[str], list[str]]:
         """Returns (services tried, errors). Errors are only printed, never put in the activity log (whose problems are
         notified: a broken service would loop)."""
+        refuse_if_read_only("your notification services")
         tried: list[str] = []
         errs: list[str] = []
         with httpx.Client(timeout=TIMEOUT, headers=HEADERS) as http:
@@ -111,6 +114,7 @@ class Notifier:
     def set_discord_logo(self, url: str) -> None:
         """Discord can't fetch images from this private server, so the logo is uploaded to the webhook instead of
         being linked."""
+        refuse_if_read_only("Discord")
         with open(os.path.join(self.static_dir, "logo.png"), "rb") as f:
             data = "data:image/png;base64," + base64.b64encode(f.read()).decode()
         r = httpx.patch(url, json={"avatar": data}, headers=HEADERS, timeout=TIMEOUT)

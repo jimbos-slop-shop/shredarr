@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 from . import __version__
+from .clients.base import read_only, set_read_only
 from .config import JSON, ConfigStore
 from .db import Database
 from .repositories import ActivityRepo, HistoryRepo, OverridesRepo, PendingRepo, RedownloadsRepo, SessionsRepo
@@ -53,6 +54,7 @@ def spawn(fn: Callable[..., Any], *args: Any, name: str | None = None) -> thread
 class Shredarr:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        set_read_only(settings.read_only)
         self.version = __version__
         self.config = ConfigStore(settings.config_path)
         self.db = Database(settings.db_path)
@@ -160,7 +162,7 @@ class Shredarr:
     def discord_logo(self) -> None:
         """With Avatar left blank, make the Shredarr logo the Discord webhook's own picture (once per webhook URL)."""
         url = self.notifier.discord_logo_wanted()
-        if not url:
+        if not url or read_only():
             return
         try:
             self.notifier.set_discord_logo(url)
@@ -184,7 +186,9 @@ class Shredarr:
     def start(self) -> None:
         self.db.migrate()
         self.webhook.token()
-        self.activity.info("Shredarr started")
+        self.activity.info(
+            "Shredarr started" + (" read-only: it won't change anything in your apps" if read_only() else "")
+        )
         for fn in (self.event_worker, self.sweep_loop, self.summary_loop, self.health_loop, self.watch_loop):
             spawn(fn, name=fn.__name__)
 

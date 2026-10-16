@@ -33,6 +33,30 @@ class NotConfigured(ServiceError):
     """The app isn't set up in Settings → Connections."""
 
 
+class ReadOnly(ServiceError):
+    """Shredarr runs read-only (SHREDARR_READ_ONLY, for a test copy): it never changes anything in another app."""
+
+
+class _Mode:
+    """Set once at startup, for the whole process."""
+
+    read_only = False
+
+
+def set_read_only(on: bool) -> None:
+    _Mode.read_only = on
+
+
+def read_only() -> bool:
+    return _Mode.read_only
+
+
+def refuse_if_read_only(app: str) -> None:
+    """Call before anything that changes something in another app."""
+    if _Mode.read_only:
+        raise ReadOnly(f"read-only test copy, so nothing was changed in {app}")
+
+
 def describe(e: Exception) -> str:
     """How a connection problem is shown in Settings and the activity log."""
     if isinstance(e, ServiceHTTPError):
@@ -46,7 +70,10 @@ def parse_body(r: httpx.Response) -> Any:
 
 
 class JsonApi:
-    """A JSON API at base_url. Every request raises ServiceError on failure."""
+    """A JSON API at base_url. Every request raises ServiceError on failure. Only GET requests are sent when
+    Shredarr runs read-only: everything else changes something."""
+
+    app = "the app"
 
     def __init__(self, base_url: str, headers: dict[str, str] | None = None, timeout: float = TIMEOUT) -> None:
         self.base_url = base_url.rstrip("/")
@@ -61,6 +88,8 @@ class JsonApi:
         json: Any = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
+        if method != "GET":
+            refuse_if_read_only(self.app)
         try:
             r = self._http.request(method, self.base_url + path, params=params, json=json, headers=headers)
         except httpx.HTTPError as e:

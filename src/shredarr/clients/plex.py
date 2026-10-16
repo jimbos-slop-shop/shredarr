@@ -10,7 +10,7 @@ import requests
 from plexapi.exceptions import BadRequest, NotFound, Unauthorized
 from plexapi.server import PlexServer
 
-from .base import TIMEOUT, ServiceHTTPError, ServiceUnreachable
+from .base import TIMEOUT, ServiceHTTPError, ServiceUnreachable, refuse_if_read_only
 
 T = TypeVar("T")
 
@@ -46,6 +46,7 @@ class PlexClient:
 
     def scan(self, section_key: str, path: str | None = None) -> None:
         """Scan a library section, or only one folder of it."""
+        refuse_if_read_only("Plex")
 
         def run(s: PlexServer) -> None:
             key = f"/library/sections/{section_key}/refresh"

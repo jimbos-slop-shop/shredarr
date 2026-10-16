@@ -13,7 +13,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import TypeVar
 
-from ..clients.base import ServiceError
+from ..clients.base import ServiceError, refuse_if_read_only
 from ..clients.servarr import ArrClient, RadarrClient, SonarrClient
 from ..clients.torrents import Torrent
 from ..config import JSON, ConfigStore
@@ -129,6 +129,7 @@ class Restorer:
     def unpack(self, arr: ArrClient, kind: str, t: Torrent) -> str:
         """RAR release: unpack its archives (read in place, never changed) into a temporary folder beside the downloads,
         have Sonarr/Radarr import the video from there, then remove the temporary folder."""
+        refuse_if_read_only("your downloads")
         if not self.config.load().restore_enabled:
             raise ServiceError("restoring RAR releases is turned off in Settings")
         if not shutil.which("unar"):
