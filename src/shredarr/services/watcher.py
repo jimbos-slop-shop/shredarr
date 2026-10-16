@@ -89,9 +89,10 @@ class LibraryWatcher:
             return None
         self.vanished = 0
         self.files = now
-        with open(self.state_file + ".tmp", "w") as f:
-            json.dump(now, f)
-        os.replace(self.state_file + ".tmp", self.state_file)
+        if now != prev:  # usually nothing changed between looks: don't rewrite the whole list every minute
+            with open(self.state_file + ".tmp", "w") as f:
+                json.dump(now, f)
+            os.replace(self.state_file + ".tmp", self.state_file)
         moved = {tuple(k) for k in now.values()}
         t = time.time()
         for p in gone:
