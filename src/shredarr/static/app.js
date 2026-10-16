@@ -1258,6 +1258,7 @@ async function loadSettings() {
       settings.free_gb != null ? `The downloads disk has ${settings.free_gb.toFixed(0)} GB free right now.` : "";
     fill($("rform"), settings.restore);
     fill($("tform"), settings.torrent_retention);
+    $("tform").elements.enabled.checked = settings.save_torrents;
     tHelp();
     fill($("polform"), settings.policy);
     $("uform").elements.enabled.checked = settings.update_check;
@@ -1450,6 +1451,9 @@ function tHelp() {
     s = settings.saved_torrents || { count: 0, bytes: 0 };
   f.value.hidden = forever;
   $("tdel").disabled = !s.count;
+  $("t-on-help").textContent = f.enabled.checked
+    ? "Each torrent Shredarr deletes for good keeps a copy of its .torrent file here."
+    : "Off: torrents deleted from now on can only be redownloaded by searching. Files already saved stay until they expire or you delete them.";
   $("t-help").textContent =
     (s.count ? `Shredarr has ${s.count} saved .torrent file${s.count === 1 ? "" : "s"} (${size(s.bytes)}). ` : "No saved .torrent files yet. ") +
     (forever ? "They're never removed." : `Files older than ${v} ${v === 1 ? f.unit.value.slice(0, -1) : f.unit.value} are removed automatically.`);
@@ -1459,6 +1463,16 @@ async function refreshSaved() {
   tHelp();
 }
 $("tform").oninput = tHelp;
+$("tform").elements.enabled.onchange = async (e) => {
+  try {
+    await postJSON("/api/save-torrents", { enabled: e.target.checked });
+    toast(e.target.checked ? "Saving .torrent files turned on" : "Saving .torrent files turned off");
+  } catch (err) {
+    e.target.checked = !e.target.checked;
+    tHelp();
+    toast(err.message, true);
+  }
+};
 $("tform").onsubmit = async (e) => {
   e.preventDefault();
   try {

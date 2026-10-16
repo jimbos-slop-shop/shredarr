@@ -202,6 +202,7 @@
 <section class="sbox"><h3><span class="ic blue"><svg class="i"><use href="#i-refresh"/></svg></span>Saved .torrent files</h3>
 <p class="help">When Shredarr deletes a torrent for good, it keeps a copy of its .torrent file, so <b>History → Redownload</b> can add the same release back. Once that copy is removed, the same release can't be brought back through Shredarr: Redownload can only have Sonarr/Radarr search for a new one.</p>
 <form id="tform">
+<div class="sw-row"><input type="checkbox" class="sw" aria-label="Save .torrent files for Redownload" name="enabled"><span><b>Save .torrent files for Redownload</b><small id="t-on-help"></small></span></div>
 <div class="field"><label for="f-tv">Keep them for</label><div><div class="dur"><input id="f-tv" name="value" type="number" min="1" step="any"><select name="unit"><option value="days">days</option><option value="months">months</option><option value="years">years</option><option value="forever">forever</option></select></div>
 <small id="t-help"></small></div></div>
 <div class="btnrow"><button type="button" class="danger" id="tdel"><svg class="i"><use href="#i-trash"/></svg>Delete all now</button><button class="p"><svg class="i"><use href="#i-check"/></svg>Save</button></div></form></section>

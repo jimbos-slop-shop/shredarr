@@ -196,6 +196,7 @@ class Dashboard:
             "notify": c.notify,
             "policy": c.password_policy,
             "restore": {"enabled": c.restore_enabled},
+            "save_torrents": c.save_torrents,
             "torrent_retention": c.torrent_retention,
             "saved_torrents": self.saved.summary(),
             "grace": {"value": g.get("value") or 0, "unit": g.get("unit") or "hours"},

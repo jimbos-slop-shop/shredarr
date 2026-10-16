@@ -89,6 +89,7 @@
     "enabled": true
   },
   "rule_list": [],
+  "save_torrents": true,
   "saved_torrents": {
     "bytes": 0,
     "count": 0

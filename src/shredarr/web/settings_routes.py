@@ -125,6 +125,12 @@ def save_restore(core: Core, body: JsonBody) -> Response:
     return text("ok")
 
 
+@router.post("/api/save-torrents")
+def save_torrents(core: Core, body: JsonBody) -> Response:
+    core.editor.save_torrents(bool(body.get("enabled")))
+    return text("ok")
+
+
 @router.post("/api/torrent-retention")
 def save_torrent_retention(core: Core, body: JsonBody) -> Response:
     try:

@@ -91,3 +91,23 @@ def test_invalid_settings(lab: Lab, start: StartFn) -> None:
         r = s.post("/api/torrent-retention", body)
         assert (r.status_code, r.text) == (400, msg)
     assert "torrent_retention" not in s.read_config()
+
+
+def test_saving_switched_off(lab: Lab, start: StartFn) -> None:
+    m = lab.add_movie("Raygun", 2024, ratio=5, seeding_days=30)
+    s = start()
+    assert s.api("/api/settings")["save_torrents"] is True
+    old, recent = saved(s, "c" * 40, 400), saved(s, "d" * 40, 10)
+    assert s.post("/api/save-torrents", {"enabled": False}).status_code == 200
+    assert s.read_config()["save_torrents"] is False
+    lab.delete_movie_files(m)
+    s.webhook(lab.movie_event(m))
+    s.wait_log("^deleted torrent")
+    assert not lab.qbittorrent.requests(path="/api/v2/torrents/export"), "the torrent client isn't even asked"
+    row = s.api("/api/history")["rows"][0]
+    assert not row["saved_torrent"] and not s.api("/api/redownload-plan", id=row["id"])["same_available"]
+    s.post("/api/torrent-retention", {"value": 1, "unit": "years"})
+    assert os.path.exists(recent) and not os.path.exists(old), "files already saved stay until they expire"
+    assert "Saving .torrent files for Redownload: off" in s.log()
+    s.post("/api/save-torrents", {"enabled": True})
+    assert s.api("/api/settings")["save_torrents"] is True

@@ -142,7 +142,7 @@ them (qBittorrent also gets *same release*).
 | Deletion delay | Minimum wait before a torrent is removed (time to Undo) |
 | Low disk space | Delete waiting torrents early when free space runs low |
 | RAR restore | Unpack RAR releases again for Undo |
-| Saved .torrent files | How long copies of deleted torrents are kept for Redownload (1 year by default), and deleting them all |
+| Saved .torrent files | Keep copies of deleted torrents for Redownload (on by default), for how long (1 year by default), and delete them all |
 | Password | Change it, set password rules, sign out everywhere |
 
 ## Security notes

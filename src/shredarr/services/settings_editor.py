@@ -166,6 +166,10 @@ class SettingsEditor:
         )
         return keep
 
+    def save_torrents(self, enabled: bool) -> None:
+        self.config.update(lambda raw: raw.update(save_torrents=enabled))
+        self.activity.info("Saving .torrent files for Redownload: " + ("on" if enabled else "off"))
+
     def restore(self, enabled: bool) -> None:
         self.config.update(lambda raw: raw.update(restore={"enabled": enabled}))
         self.activity.info("Restoring RAR releases with Undo: " + ("on" if enabled else "off"))

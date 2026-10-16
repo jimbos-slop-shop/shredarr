@@ -290,7 +290,7 @@ class Cleaner:
 
     def capture_restore(self, t: Torrent) -> JSON:
         """Right before a torrent is deleted for good: what it was (movie / show + episodes, with Sonarr/Radarr
-        settings) and a copy of its .torrent file, so it can be downloaded again later from History."""
+        settings) and a copy of its .torrent file (unless switched off), so it can be downloaded again from History."""
         h = t["hash"]
         row = self.pending.get(h)
         snap = (row.undo if row else None) or {}
@@ -324,6 +324,8 @@ class Cleaner:
                     out["series"] = {**series_settings(sr), "seasons": season_monitoring(sr)}
         except Exception as e:  # best effort, as above
             log.warning("capture_restore: %s", e)
+        if not self.saved.enabled:  # switched off in Settings: Redownload can only search again
+            return out
         try:
             data = self.connections.torrents.export(h)
             if data:

@@ -219,6 +219,11 @@ class Config:
         return bool(r.get("enabled", r.get("method") != "off"))
 
     @property
+    def save_torrents(self) -> bool:
+        """Keep a copy of each torrent's .torrent file when it's deleted for good (for History → Redownload)."""
+        return bool(self.raw.get("save_torrents", True))
+
+    @property
     def torrent_retention(self) -> JSON:
         """How long saved .torrent files are kept, e.g. {"value": 1, "unit": "years"} (or days, months, forever)."""
         r = {**RETENTION_DEFAULT, **self.raw.get("torrent_retention", {})}

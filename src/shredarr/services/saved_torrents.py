@@ -1,5 +1,6 @@
 """The .torrent files Shredarr keeps when it deletes a torrent for good, so History → Redownload can add the same
-release back. They're removed once they're older than Settings → Saved .torrent files allows (1 year by default)."""
+release back. They're removed once they're older than Settings → Saved .torrent files allows (1 year by default).
+Saving can be switched off there; files already saved then stay until they expire or are deleted."""
 
 from __future__ import annotations
 
@@ -27,6 +28,10 @@ class SavedTorrents:
 
     def has(self, h: str | None) -> bool:
         return bool(h) and os.path.isfile(self.path(h))
+
+    @property
+    def enabled(self) -> bool:
+        return self.config.load().save_torrents
 
     def save(self, h: str, data: bytes) -> None:
         os.makedirs(self.folder, exist_ok=True)
