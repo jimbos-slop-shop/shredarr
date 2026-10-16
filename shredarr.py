@@ -5,7 +5,7 @@ seeding rules are met and none of the torrent's files are still in the library."
 import base64, hashlib, hmac, html, http.cookiejar, http.cookies, json, os, queue, re, secrets, shutil, sqlite3, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 REPO = os.environ.get("SHREDARR_REPO", "jschaef80/shredarr")  # where update checks look for new releases
 CFG = os.environ.get("SHREDARR_CONFIG", "/config/config.json")
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")

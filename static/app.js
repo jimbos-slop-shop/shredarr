@@ -86,12 +86,13 @@ const post = (url, body, type) =>
 
 // ------------------------------------------------------------------ theme (auto / light / dark)
 const THEMES = ["auto", "light", "dark"];
-const THEME_LABEL = { auto: "follows your device", light: "light", dark: "dark" };
+const THEME_LABEL = { auto: "System", light: "Light", dark: "Dark" };
 function applyTheme(t) {
   if (t === "auto") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = t;
   $("htheme").firstChild.innerHTML = `<use href="#i-${{ auto: "auto", light: "sun", dark: "moon" }[t]}"/>`;
-  $("htheme").title = "Theme: " + THEME_LABEL[t];
+  $("htheme").lastChild.textContent = THEME_LABEL[t];
+  $("htheme").title = `Theme: ${THEME_LABEL[t]}${t === "auto" ? " (follows your device)" : ""}. Click to change.`;
 }
 let theme = "auto";
 try {
@@ -497,7 +498,7 @@ function sentence() {
         : `${ds} <b>or</b> ${rs}, whichever comes first`
       : ds || rs || "<b>straight away</b> (no seeding rule)";
   $("sentence").innerHTML =
-    `After you delete something in ${MEDIA}, its torrent is removed once it ${ds || rs ? "" : "is deleted "}${cond}.` +
+    `After you delete something in your media server, its torrent is removed once it ${ds || rs ? "" : "is deleted "}${cond}.` +
     (f.get("dry_run") ? " <b>Dry run:</b> only logged for now." : "");
 }
 $("rules").addEventListener("input", sentence);
@@ -1427,7 +1428,7 @@ function gHelp() {
   const f = formObj($("gform")),
     v = +f.value || 0;
   $("g-help").textContent = v
-    ? `Torrents wait at least ${v} ${v === 1 ? f.unit.slice(0, -1) : f.unit} after you delete in ${MEDIA}. Sonarr/Radarr cleanup still happens right away; Undo reverses it.`
+    ? `Torrents wait at least ${v} ${v === 1 ? f.unit.slice(0, -1) : f.unit} after you delete something in your media server. Sonarr/Radarr cleanup still happens right away; Undo reverses it.`
     : "0 means no delay: the torrent is removed as soon as its seeding rule is met.";
 }
 $("gform").oninput = gHelp;
