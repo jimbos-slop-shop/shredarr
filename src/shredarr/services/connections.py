@@ -13,7 +13,19 @@ from ..clients.plex import PlexClient
 from ..clients.seerr import SeerrClient
 from ..clients.servarr import ArrClient, ProwlarrClient, RadarrClient, SonarrClient
 from ..clients.torrents import Torrent, TorrentClient, make_client
-from ..config import ARR_KINDS, CLIENTS, JSON, SERVICES, ArrInstance, ConfigStore, api_url, kind_of
+from ..config import (
+    ARR_KINDS,
+    CLIENTS,
+    JSON,
+    SECRET_KEYS,
+    SERVICES,
+    ArrInstance,
+    Config,
+    ConfigStore,
+    api_url,
+    base_url,
+    kind_of,
+)
 from ..files import PathMapper
 
 T = TypeVar("T")
@@ -157,6 +169,16 @@ class TorrentService:
     def add(self, content: bytes, filename: str, category: str) -> None:
         refuse_if_read_only(self.connections.config.load().client_name)
         self._call(lambda c: c.add(content, filename, category))
+
+
+def with_saved_secrets(c: Config, svc: str, conf: JSON) -> JSON:
+    """Settings → Test leaves a saved key or password blank, meaning "the saved one". It's only filled in when the
+    address is the saved one too: otherwise the saved key would be sent to whatever address was typed."""
+    saved = c.service(svc) or next((x for x in c.get("extra_arrs", []) if x.get("key") == svc), {})
+    kind = kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
+    if base_url(kind, conf.get("url")).casefold() != base_url(kind, saved.get("url")).casefold():
+        return conf
+    return {**conf, **{k: saved[k] for k in SECRET_KEYS if not conf.get(k) and saved.get(k)}}
 
 
 def describe_service(svc: str, conf: JSON) -> str:

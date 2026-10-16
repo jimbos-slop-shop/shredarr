@@ -319,3 +319,12 @@ def test_webhook_without_a_token_is_refused(lab: Lab, start: StartFn) -> None:
     del conf["webhook_token"]  # removed by hand while Shredarr runs
     s.write_config(conf)
     assert s.webhook({"notification_type": "ItemDeleted"}, token=None).status_code == 401
+
+
+def test_connection_test_keeps_saved_keys_at_their_address(lab: Lab, start: StartFn) -> None:
+    """A blank key means the saved one, but only for the saved address: it's never sent anywhere else."""
+    s = start()
+    assert s.post("/api/test-connection", {"service": "sonarr", "conf": {"url": lab.sonarr.url + "/"}}).json()["ok"]
+    r = s.post("/api/test-connection", {"service": "sonarr", "conf": {"url": lab.radarr.url}})
+    assert not r.json()["ok"]
+    assert not any(x.headers.get("x-api-key") == lab.sonarr.api_key for x in lab.radarr.requests())

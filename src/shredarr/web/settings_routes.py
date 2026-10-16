@@ -7,8 +7,7 @@ from fastapi.responses import Response
 
 from ..app import spawn
 from ..clients.base import ReadOnly, ServiceHTTPError
-from ..config import SECRET_KEYS
-from ..services.connections import describe_service
+from ..services.connections import describe_service, with_saved_secrets
 from ..services.settings_editor import Invalid
 from ..text import plural
 from .deps import Core, JsonBody
@@ -55,12 +54,8 @@ def save_connections(core: Core, body: JsonBody) -> Response:
 
 @router.post("/api/test-connection")
 def test_connection(core: Core, body: JsonBody) -> Response:
-    svc, conf = body.get("service"), dict(body.get("conf") or {})
-    c = core.config.load()
-    saved = c.service(svc or "") or next((x for x in c.get("extra_arrs", []) if x.get("key") == svc), {})
-    for k in SECRET_KEYS:  # a blank key or password means the saved one
-        if not conf.get(k) and saved.get(k):
-            conf[k] = saved[k]
+    svc = body.get("service") or ""
+    conf = with_saved_secrets(core.config.load(), svc, dict(body.get("conf") or {}))
     try:
         return as_json({"ok": True, "msg": describe_service(svc or "", conf)})
     except ServiceHTTPError as e:
