@@ -91,6 +91,13 @@ git diff tests/golden    # review every changed line: this is the visible change
 summary, update checks, retries). `tests/fixtures/state-1.2.1.db` is a database made by Shredarr 1.2.1, to keep
 upgrades working.
 
+## Trying a change on real data
+
+Run the branch's image as a second container with `SHREDARR_READ_ONLY=1`, a copy of the real config folder, and
+`/data` mounted read-only. Read-only mode is enforced in the clients: anything that would change another app (any
+non-GET request, torrent client removes and adds, Plex scans, RAR unpacking) raises `ReadOnly` instead, and no
+notifications are sent. `tests/test_read_only.py` checks that nothing gets through.
+
 ## Releasing
 
 1. Set the version in `pyproject.toml` (the app reads it from there) and run `uv lock`.

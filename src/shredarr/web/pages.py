@@ -7,6 +7,7 @@ import json
 import os
 
 from ..app import Shredarr
+from ..clients.base import read_only
 from ..config import MODES
 
 CONTENT_TYPES = {
@@ -65,6 +66,8 @@ def main_page(core: Shredarr) -> str:
     dry = c.dry_run
     sub = {
         "%BANNERHIDDEN%": "" if dry else "hidden",
+        "%ROHIDDEN%": "" if read_only() else "hidden",
+        "<title>Shredarr</title>": "<title>Shredarr (test)</title>" if read_only() else "<title>Shredarr</title>",
         "%MODECLS%": "dry" if dry else "live",
         "%MODETXT%": "Dry run" if dry else "Live",
         "%DAYS%": fmt(r["min_seed_days"]),
@@ -88,11 +91,12 @@ def main_page(core: Shredarr) -> str:
 
 def sign_in_page(core: Shredarr, subtitle: str, body: str, note: str = "", ok: bool = False) -> str:
     message = f"<div class={'ok' if ok else 'err'}>{htmlmod.escape(note)}</div>" if note else ""
-    return (
+    page = (
         read(core.settings.static_dir, "login.html")
         .replace("%SUB%", subtitle)
         .replace("%BODY%", body.replace("%ERR%", message))
     )
+    return page.replace("· Shredarr</title>", "· Shredarr (test)</title>") if read_only() else page
 
 
 def setup_page(core: Shredarr, err: str = "") -> str:

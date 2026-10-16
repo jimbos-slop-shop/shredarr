@@ -7,6 +7,8 @@ from .base import JsonApi, ServiceHTTPError
 
 
 class SeerrClient(JsonApi):
+    app = "Seerr"
+
     def __init__(self, url: str, api_key: str) -> None:
         super().__init__(url, {"X-Api-Key": api_key})
 

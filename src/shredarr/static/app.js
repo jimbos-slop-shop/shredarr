@@ -1176,7 +1176,8 @@ function renderConnections() {
   for (const box of document.querySelectorAll("#cform .conn:not(.extra)")) showConn(box);
   $("extras").replaceChildren(...settings.connections.extra_arrs.map(extraBox));
   kindHelp();
-  $("connbox").classList.toggle("needs", settings.missing.length > 0);
+  $("s-connections").classList.toggle("needs", settings.missing.length > 0);
+  navWarnings();
   if (!$("f-wu").value) $("f-wu").value = settings.webhook_url_guess;
 }
 for (const sel of [$("f-client"), $("f-media")])
@@ -1549,7 +1550,8 @@ $("logoutall").onclick = async () => {
   location.href = "/login";
 };
 
-// On phones, each settings box and service group folds open/closed; which ones are open is remembered.
+// On phones, the groups inside a settings section (Discord, Path mappings, ...) fold open/closed; which ones are
+// open is remembered.
 function collapsibles() {
   const key = "shredarr-open",
     phone = matchMedia("(max-width:760px)");
@@ -1557,7 +1559,7 @@ function collapsibles() {
   try {
     open = JSON.parse(localStorage.getItem(key)) || {};
   } catch (e) {}
-  for (const h of document.querySelectorAll("#spage .sbox>h3, #spage .svc>.svc-h")) {
+  for (const h of document.querySelectorAll("#spage .svc>.svc-h")) {
     const box = h.parentElement,
       id = h.textContent.trim();
     box.classList.toggle("collapsed", !open[id]);
@@ -1583,14 +1585,55 @@ function collapsibles() {
   }
 }
 
+// Settings: a nav on the left (a row of tabs on phones) built from the sections, one section shown at a time. The open
+// section is in the address (/settings#notifications), so reloading and the back button keep it.
+const sections = [...document.querySelectorAll("#spage .spanes > .sbox")];
+function buildNav() {
+  let group = null;
+  for (const s of sections) {
+    if (s.dataset.group !== group) {
+      group = s.dataset.group;
+      $("snav").append(Object.assign(document.createElement("div"), { className: "sg", textContent: group }));
+    }
+    const h = s.querySelector("h3"),
+      b = document.createElement("button");
+    b.type = "button";
+    b.dataset.section = s.id.slice(2);
+    b.append(h.querySelector(".ic").cloneNode(true), Object.assign(document.createElement("span"), { textContent: h.textContent }));
+    b.onclick = () => showSection(b.dataset.section, true);
+    $("snav").append(b);
+  }
+}
+function showSection(name, user) {
+  if (!sections.some((s) => s.id === "s-" + name)) name = sections[0].id.slice(2);
+  for (const s of sections) s.hidden = s.id !== "s-" + name;
+  for (const b of $("snav").querySelectorAll("button")) {
+    const on = b.dataset.section === name;
+    b.classList.toggle("on", on);
+    if (on) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+    if (on && user) b.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  if (user && location.hash !== "#" + name) history.pushState(null, "", "#" + name);
+  if (user && matchMedia("(max-width:760px)").matches) $("spage").scrollIntoView({ block: "start" });
+}
+function navWarnings() {
+  const h = settings.health || {},
+    bad = settings.missing.length > 0 || Object.values(h).some((x) => !x.ok);
+  $("snav").querySelector('[data-section="connections"]').classList.toggle("warn", bad);
+}
+
 // ------------------------------------------------------------------ start
 if (ON_SETTINGS) {
+  buildNav();
+  showSection(location.hash.slice(1));
+  addEventListener("popstate", () => showSection(location.hash.slice(1)));
   collapsibles();
   document.body.classList.add("on-settings");
   $("spage").hidden = false;
   $("hset").hidden = true;
   $("hback").hidden = false;
-  document.title = "Settings · Shredarr";
+  document.title = "Settings · " + document.title;
   loadSettings();
 } else {
   setTab(tab);

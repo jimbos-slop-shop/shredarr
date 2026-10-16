@@ -59,6 +59,8 @@ class ArrClient(ServarrClient):
 
 
 class RadarrClient(ArrClient):
+    app = "Radarr"
+
     def movies(self, tmdb_id: int | None = None) -> list[JSON]:
         return list(self.get("/movie", tmdbId=tmdb_id) if tmdb_id else self.get("/movie"))
 
@@ -93,6 +95,8 @@ class RadarrClient(ArrClient):
 
 
 class SonarrClient(ArrClient):
+    app = "Sonarr"
+
     def all_series(self) -> list[JSON]:
         return list(self.get("/series"))
 
@@ -145,5 +149,7 @@ class SonarrClient(ArrClient):
 
 
 class ProwlarrClient(ServarrClient):
+    app = "Prowlarr"
+
     def indexers(self) -> list[JSON]:
         return list(self.get("/indexer"))

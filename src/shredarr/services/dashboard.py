@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 
-from ..clients.base import ServiceError
+from ..clients.base import ServiceError, read_only
 from ..clients.torrents import Torrent
 from ..config import JSON, MODES, SECRET_KEYS, SERVICES, ConfigStore, base_url
 from ..files import restorable
@@ -70,6 +70,7 @@ class Dashboard:
             "health": self.health.status,
             "version": self.version,
             "update": self.updates.info,
+            "read_only": read_only(),
         }
         if c.missing:
             return {"setup": c.missing, "torrents": [], **common}

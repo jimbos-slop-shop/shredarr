@@ -17,6 +17,8 @@ def jf_id(item_id: str | None) -> str:
 
 
 class JellyfinClient(JsonApi):
+    app = "Jellyfin"
+
     def __init__(self, url: str, api_key: str) -> None:
         super().__init__(url, {"X-Emby-Token": api_key})
 

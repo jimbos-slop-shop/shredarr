@@ -17,6 +17,7 @@ class Settings:
     repo: str = "jschaef80/shredarr"  # where update checks look for new releases
     watch_interval: float = 60  # Plex library watch: seconds between looks at the library folders
     watch_confirm: float = 100  # seconds a file must stay gone: an upgrade or rename replaces it within seconds
+    read_only: bool = False  # a test copy: never change anything in another app, send no notifications
     static_dir: str = STATIC_DIR
 
     @classmethod
@@ -30,6 +31,7 @@ class Settings:
             repo=env("SHREDARR_REPO", cls.repo),
             watch_interval=float(env("SHREDARR_WATCH_INTERVAL", str(cls.watch_interval))),
             watch_confirm=float(env("SHREDARR_WATCH_CONFIRM", str(cls.watch_confirm))),
+            read_only=env("SHREDARR_READ_ONLY", "").lower() in ("1", "true", "yes", "on"),
         )
 
     @property

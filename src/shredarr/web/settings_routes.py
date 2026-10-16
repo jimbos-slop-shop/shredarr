@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from ..app import spawn
-from ..clients.base import ServiceHTTPError
+from ..clients.base import ReadOnly, ServiceHTTPError
 from ..config import SECRET_KEYS
 from ..services.connections import describe_service
 from ..services.settings_editor import Invalid
@@ -36,7 +36,10 @@ def save_notifications(core: Core, body: JsonBody) -> Response:
 @router.post("/api/notify-test")
 def notify_test(core: Core) -> Response:
     core.discord_logo()
-    tried, errs = core.notifier.send(core.config.load().notify, "Shredarr test", "Notifications are working. 🗑️")
+    try:
+        tried, errs = core.notifier.send(core.config.load().notify, "Shredarr test", "Notifications are working. 🗑️")
+    except ReadOnly as e:
+        return text(str(e).capitalize() + ".", 400)
     if not tried:
         return text("Add at least one service first, and save.", 400)
     return text("; ".join(errs) or "Sent to " + ", ".join(tried), 502 if errs else 200)

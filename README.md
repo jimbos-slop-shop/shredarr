@@ -106,6 +106,10 @@ Then:
 4. Pick your **default seeding rule** on the dashboard. Leave **Dry run** on until you've seen it do the right
    thing in the Activity tab.
 
+**A test copy next to the real one:** run a second container with the environment variable `SHREDARR_READ_ONLY=1`
+and a copy of the config folder. It shows your real torrents, but it never changes anything in your other apps and
+sends no notifications, whatever its settings say (a banner says so). Handy for trying a new version first.
+
 > Shredarr writes into the `/data` mount only to unpack RAR releases for Undo (into a temporary folder next to the
 > download, removed afterwards). Library files and downloads are only deleted through your media server,
 > Sonarr/Radarr and the torrent client themselves.
@@ -132,6 +136,8 @@ whose copy is really gone. Delete the 1080p version and the 4K one stays, and th
 them (qBittorrent also gets *same release*).
 
 ## Settings at a glance
+
+Settings has a menu on the left (a row of tabs on phones) and shows one section at a time.
 
 | Section | What it does |
 |---|---|
