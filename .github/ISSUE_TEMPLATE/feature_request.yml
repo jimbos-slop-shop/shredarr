@@ -1,0 +1,23 @@
+name: Feature request
+description: An idea for something Shredarr could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How you'd like it to work.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Media server, torrent client and anything else that matters for this.

@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Shredarr doesn't work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check you're on the latest release first.
+        Remove API keys, passwords and tracker passkeys from anything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: Shredarr version
+      description: Shown in the footer and under Settings → About.
+      placeholder: "2.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: media-server
+    attributes:
+      label: Media server
+      options:
+        - Jellyfin
+        - Plex
+    validations:
+      required: true
+  - type: dropdown
+    id: torrent-client
+    attributes:
+      label: Torrent client
+      options:
+        - qBittorrent
+        - Transmission
+        - Deluge
+    validations:
+      required: true
+  - type: input
+    id: other-versions
+    attributes:
+      label: Other app versions
+      description: Media server, torrent client, Sonarr, Radarr, Seerr, if they matter here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant activity log lines, or the container log (`docker logs shredarr`).
+      render: text
+    validations:
+      required: true

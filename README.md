@@ -204,8 +204,17 @@ tested.
 ```sh
 uv sync                 # set up .venv with everything, including the dev tools
 uv run pytest -n auto   # the test suite (fake apps on a temporary disk; nothing real is touched)
-uv run ruff check . && uv run mypy src
+uv run ruff check . && uv run ruff format --check . && uv run mypy src
 ```
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and follow the
+[code of conduct](CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+## Security
+
+Found a security problem? Please report it privately, as described in [SECURITY.md](SECURITY.md), not as an issue.
 
 ## License
 
