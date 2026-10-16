@@ -38,7 +38,9 @@ def find_series(
     return hits[0] if len(hits) == 1 else None
 
 
-def find_movie(movies: list[JSON], tmdb: Any = None, imdb: Any = None, title: str | None = None) -> JSON | None:
+def find_movie(
+    movies: list[JSON], tmdb: int | None = None, imdb: str | None = None, title: str | None = None
+) -> JSON | None:
     """The movie a media server event is about: by TMDb id, then IMDb id, then by title if only one has it."""
     for key, val in (("tmdbId", tmdb), ("imdbId", imdb)):
         hit = next((m for m in movies if val and m.get(key) == val), None)
