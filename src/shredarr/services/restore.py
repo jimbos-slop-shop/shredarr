@@ -11,7 +11,6 @@ import subprocess
 import time
 from collections.abc import Callable
 from functools import partial
-from typing import TypeVar
 
 from ..clients.base import ServiceError, refuse_if_read_only
 from ..clients.servarr import ArrClient, RadarrClient, SonarrClient
@@ -25,7 +24,6 @@ from .library import Library
 from .media_server import media_server
 from .notifications import Notifier
 
-T = TypeVar("T")
 UNPACK_DIR = "_shredarr-restore"  # made next to the download, removed again after the import
 
 

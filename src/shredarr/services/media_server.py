@@ -112,6 +112,6 @@ class Plex:
         self.connections.plex().scan_all()
 
 
-def media_server(connections: Connections) -> Jellyfin | Plex:
+def media_server(connections: Connections) -> MediaServer:
     """The media server set up in Settings."""
     return Plex(connections) if connections.config.load().media_kind == "plex" else Jellyfin(connections)
