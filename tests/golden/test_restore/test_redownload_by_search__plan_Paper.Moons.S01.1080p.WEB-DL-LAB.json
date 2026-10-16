@@ -1,0 +1,17 @@
+{
+  "app": "sonarr",
+  "same_available": false,
+  "steps": {
+    "same": [
+      "Put 'Paper Moons' back in Sonarr if it was removed, and monitor S01E01-E03 (3 episodes)",
+      "Add the original torrent back to Transmission (Paper.Moons.S01.1080p.WEB-DL-LAB), so the same release downloads again",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ],
+    "search": [
+      "Put 'Paper Moons' back in Sonarr if it was removed, and monitor S01E01-E03 (3 episodes)",
+      "Have Sonarr search for S01E01-E03 (3 episodes) (whole seasons as season packs)",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ]
+  },
+  "what": "'Paper Moons' S01E01-E03 (3 episodes)"
+}

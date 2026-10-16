@@ -1,0 +1,28 @@
+[
+  {
+    "app": "sonarr",
+    "files": 3,
+    "id": "sonarr:1:1",
+    "instance": "Sonarr",
+    "kind": "sonarr",
+    "linked": false,
+    "path": "<LAB>/data/media/tv/The Wire/Season 01",
+    "size": 6000,
+    "title": "The Wire",
+    "what": "S01E01-E03 (3 episodes)",
+    "year": 2020
+  },
+  {
+    "app": "radarr",
+    "files": 1,
+    "id": "radarr:1",
+    "instance": "Radarr",
+    "kind": "radarr",
+    "linked": false,
+    "path": "<LAB>/data/media/movies/Caminandes (2013)/Caminandes (2013) [Bluray-1080p].mkv",
+    "size": 3000,
+    "title": "Caminandes",
+    "what": "Movie",
+    "year": 2013
+  }
+]

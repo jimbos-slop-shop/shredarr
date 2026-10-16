@@ -1,4 +1,4 @@
-<p align="center"><img src="static/logo.png" width="140" alt="Shredarr logo"></p>
+<p align="center"><img src="src/shredarr/static/logo.png" width="140" alt="Shredarr logo"></p>
 
 <h1 align="center">Shredarr</h1>
 <p align="center"><b>Delete it in Jellyfin or Plex, and it's gone everywhere.</b></p>
@@ -149,7 +149,7 @@ them (qBittorrent also gets *same release*).
 - The web UI needs a password. Sessions last 30 days; repeated wrong passwords are slowed down and blocked.
 - Forgot the password? **Forgot password?** on the sign-in page sends a one-time code to your notification
   services and also writes it to `RESET-CODE.txt` in the config folder and the container log. You can also run
-  `docker exec shredarr python3 /app/shredarr.py set-password 'new password'`.
+  `docker exec shredarr shredarr set-password 'new password'`.
 - The Jellyfin webhook is authenticated with its own random token.
 - API keys and passwords are stored in `config.json` in your config folder (readable only by its owner) and are
   never sent back to the browser. Tracker URLs are only ever shown as host names, never with your passkey.
@@ -159,11 +159,12 @@ them (qBittorrent also gets *same release*).
 ## Try the demo
 
 Run Shredarr with made-up data (nothing is contacted or deleted), then open `http://localhost:8089` and sign in
-with the password `demo`:
+with the password `demo`. Shredarr itself runs unchanged, against the same fake Sonarr, Radarr, qBittorrent, Jellyfin
+and Seerr its tests use. You need [uv](https://docs.astral.sh/uv/):
 
 ```sh
 git clone https://github.com/jschaef80/shredarr && cd shredarr
-docker run --rm -p 8089:8089 -v "$PWD/tools:/tools" ghcr.io/jschaef80/shredarr python3 /tools/demo.py
+uv run tools/demo.py
 ```
 
 ## Updating
@@ -174,6 +175,18 @@ docker compose pull shredarr && docker compose up -d shredarr
 
 Shredarr shows a notice in the footer and under *Settings → About* when a new release is available (you can turn
 the check off there).
+
+## Development
+
+Shredarr is a Python package (FastAPI, httpx, and the qBittorrent, Transmission and Plex client libraries), managed
+with [uv](https://docs.astral.sh/uv/). See [CONTRIBUTING.md](CONTRIBUTING.md) for how it's put together and how it's
+tested.
+
+```sh
+uv sync                 # set up .venv with everything, including the dev tools
+uv run pytest -n auto   # the test suite (fake apps on a temporary disk; nothing real is touched)
+uv run ruff check . && uv run mypy src
+```
 
 ## License
 

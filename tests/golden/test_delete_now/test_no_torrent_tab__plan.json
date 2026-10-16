@@ -1,0 +1,14 @@
+{
+  "items": [
+    "The Wire S01E01-E03 (3 episodes)",
+    "Caminandes"
+  ],
+  "size": 9000,
+  "steps": [
+    "Delete 'The Wire' S01E01-E03 (3 episodes), 'Caminandes' from Jellyfin (and its library files)",
+    "Remove 'Caminandes' from Radarr, with its files (and add an import exclusion)",
+    "Remove 'Caminandes' from Seerr",
+    "Unmonitor 'The Wire' S01E01-E03 (3 episodes) in Sonarr",
+    "Remove 'The Wire' S01E01-E03 (3 episodes) files from Sonarr"
+  ]
+}

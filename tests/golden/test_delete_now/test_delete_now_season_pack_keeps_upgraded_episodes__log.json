@@ -1,0 +1,9 @@
+[
+  "Shredarr started",
+  "Delete now: Paper.Moons.S01.1080p.WEB-DL-LAB",
+  "  done: Delete 'Paper Moons' S01E01-E04 (3 episodes) from Jellyfin (and its library files)",
+  "  done: Unmonitor 'Paper Moons' S01E01-E04 (3 episodes) in Sonarr",
+  "  done: Remove 'Paper Moons' S01E01-E04 (3 episodes) files from Sonarr",
+  "  Keep 'Paper Moons' S01E02 in Sonarr and Jellyfin: its current file came from a different download",
+  "  done: Delete torrent 'Paper.Moons.S01.1080p.WEB-DL-LAB' and its downloaded data from qBittorrent"
+]

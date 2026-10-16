@@ -5,3 +5,10 @@ config/
 config.json
 RESET-CODE.txt
 .DS_Store
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+
+!tests/fixtures/*.db

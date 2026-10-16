@@ -1,0 +1,11 @@
+[
+  "Shredarr started",
+  "Jellyfin deleted Movie: Spring",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  removed 'Spring' from Radarr (with import exclusion)",
+  "  removed 'Spring' from Seerr",
+  "Default rule saved: 5 days, seed time only \u00b7 dry run on",
+  "[dry run] would have deleted torrent 'Spring.2019.1080p.BluRay.x264-LAB' and its data (seeded 6.0 of 5 days)",
+  "Default rule saved: 5 days or ratio 1, seed time OR ratio (whichever first) \u00b7 live",
+  "deleted torrent 'Spring.2019.1080p.BluRay.x264-LAB' and its data (seeded 6.0 of 5 days, ratio 1.20 of 1)"
+]

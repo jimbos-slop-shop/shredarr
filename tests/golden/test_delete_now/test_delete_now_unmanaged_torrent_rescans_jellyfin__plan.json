@@ -1,0 +1,9 @@
+{
+  "dry_run": false,
+  "name": "Python.Course.2024",
+  "notes": [],
+  "steps": [
+    "Delete torrent 'Python.Course.2024' and its downloaded data from qBittorrent",
+    "Rescan the Jellyfin library so it drops the deleted files"
+  ]
+}

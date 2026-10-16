@@ -1,0 +1,13 @@
+[
+  "Shredarr started",
+  "Jellyfin deleted Movie: Spring",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  removed 'Spring' from Radarr (with import exclusion)",
+  "  removed 'Spring' from Seerr",
+  "Jellyfin deleted Movie: Charge",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  removed 'Charge' from Radarr (with import exclusion)",
+  "  removed 'Charge' from Seerr",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "Added 1 leftover torrent to the cleanup list"
+]

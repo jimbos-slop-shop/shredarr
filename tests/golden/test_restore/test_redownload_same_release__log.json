@@ -1,0 +1,12 @@
+[
+  "Shredarr started",
+  "Jellyfin deleted Movie: Raygun",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  removed 'Raygun' from Radarr (with import exclusion)",
+  "  removed 'Raygun' from Seerr",
+  "deleted torrent 'Raygun.2024.1080p.BluRay.x264-LAB' and its data (seeded 30.0 of 14 days, ratio 5.00 of 2)",
+  "Redownload: Raygun",
+  "  done: re-added to Radarr",
+  "  done: added the original torrent back to qBittorrent (Raygun.2024.1080p.BluRay.x264-LAB)",
+  "Redownload finished: 'Raygun' is back in your library"
+]

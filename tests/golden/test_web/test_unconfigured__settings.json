@@ -1,0 +1,96 @@
+{
+  "behavior": {
+    "cross_seed_with_original": false,
+    "import_exclusion": true,
+    "remove_episode_files": true,
+    "remove_from_seerr": true,
+    "unmonitor": true
+  },
+  "choices": {
+    "categories": [],
+    "titles": [],
+    "trackers": []
+  },
+  "connections": {
+    "deluge": {
+      "has_secret": false
+    },
+    "extra_arrs": [],
+    "jellyfin": {
+      "has_secret": false
+    },
+    "media_server": "jellyfin",
+    "plex": {
+      "has_secret": false
+    },
+    "prowlarr": {
+      "has_secret": false
+    },
+    "qbittorrent": {
+      "has_secret": false
+    },
+    "radarr": {
+      "has_secret": false
+    },
+    "seerr": {
+      "has_secret": false
+    },
+    "sonarr": {
+      "has_secret": false
+    },
+    "torrent_client": "qbittorrent",
+    "transmission": {
+      "has_secret": false
+    }
+  },
+  "free_gb": null,
+  "grace": {
+    "unit": "hours",
+    "value": 0
+  },
+  "low_space": {
+    "enabled": false,
+    "min_free_gb": 100
+  },
+  "missing": [
+    "sonarr",
+    "radarr",
+    "qbittorrent",
+    "jellyfin"
+  ],
+  "notify": {
+    "daily_summary": true,
+    "discord_avatar": "",
+    "discord_url": "",
+    "discord_username": "Shredarr",
+    "ntfy_priority": "3",
+    "ntfy_server": "",
+    "ntfy_token": "",
+    "ntfy_topic": "",
+    "on_cleanup": true,
+    "on_failure": true,
+    "on_jellyfin": false,
+    "on_undo": true,
+    "pushover_priority": "0",
+    "pushover_sound": "",
+    "pushover_token": "",
+    "pushover_user": "",
+    "summary_time": "09:00"
+  },
+  "path_maps": [],
+  "policy": {
+    "digit": false,
+    "min_length": 8,
+    "symbol": false,
+    "upper": false
+  },
+  "repo": "jschaef80/shredarr",
+  "restore": {
+    "enabled": true
+  },
+  "rule_list": [],
+  "unar": false,
+  "update_check": true,
+  "version": "<VERSION>",
+  "webhook_url_guess": "http://127.0.0.1:8089"
+}

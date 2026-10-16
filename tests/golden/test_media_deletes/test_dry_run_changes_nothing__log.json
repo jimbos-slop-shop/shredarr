@@ -1,0 +1,13 @@
+[
+  "Shredarr started",
+  "Jellyfin deleted Movie: Big Buck Bunny",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  [dry run] would have removed 'Big Buck Bunny' from Radarr (with import exclusion)",
+  "  [dry run] would have removed 'Big Buck Bunny' from Seerr",
+  "Jellyfin deleted Episode: Paper Moons / Episode 1 (S1E1)",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  [dry run] would have unmonitored 'Paper Moons' S01E01 in Sonarr",
+  "  [dry run] would have removed 1 episode file record(s) of 'Paper Moons' S01E01 from Sonarr",
+  "[dry run] would have deleted torrent 'Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB' and its data (seeded 20.0 of 14 days, ratio 3.10 of 2)",
+  "[dry run] would have deleted torrent 'Paper.Moons.S01E01.1080p.WEB-DL-LAB' and its data (seeded 0.0 of 14 days, ratio 5.00 of 2)"
+]

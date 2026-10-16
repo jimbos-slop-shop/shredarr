@@ -1,0 +1,10 @@
+{
+  "count": 1,
+  "name": "'Paper Moons' S01",
+  "problem": null,
+  "steps": [
+    "Monitor 'Paper Moons' S01 again in Sonarr",
+    "Have Sonarr re-import the file from this torrent's download, so it's back in your library and Jellyfin",
+    "Take the torrent off the cleanup list. It keeps seeding as normal"
+  ]
+}

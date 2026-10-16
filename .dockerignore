@@ -1,6 +1,7 @@
-.git
-.github
-*.md
-LICENSE
-docker-compose*.yml
-__pycache__
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+**/__pycache__
