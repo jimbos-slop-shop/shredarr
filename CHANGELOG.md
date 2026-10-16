@@ -4,6 +4,8 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-16
+
 Review fixes from [#7](https://github.com/jschaef80/shredarr/pull/7).
 
 ### Fixed
@@ -51,7 +53,8 @@ Bug fixes, structure, performance and security work ([#6](https://github.com/jsc
 - Fixes: Undo of RAR releases with 10+ parts, the log text for Never rules, the message for a wrong qBittorrent
   password.
 
-[Unreleased]: https://github.com/jschaef80/shredarr/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/jschaef80/shredarr/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/jschaef80/shredarr/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/jschaef80/shredarr/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/jschaef80/shredarr/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/jschaef80/shredarr/compare/v2.0.0...v2.1.0
