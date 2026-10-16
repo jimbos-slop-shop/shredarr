@@ -20,7 +20,7 @@ from .services.cleanup import Cleaner
 from .services.connections import Connections
 from .services.dashboard import Dashboard
 from .services.delete_now import DeleteNow
-from .services.deletes import MediaDeletes, Suppressions
+from .services.deletes import MediaDeletes
 from .services.health import Health, Updates
 from .services.library import Library
 from .services.notifications import Notifier
@@ -28,10 +28,12 @@ from .services.orphans import Orphans
 from .services.queue import CleanupQueue
 from .services.redownload import Redownloader
 from .services.removal import MediaRemoval
-from .services.restore import Restorer, Undo
+from .services.restore import Restorer
 from .services.saved_torrents import SavedTorrents
 from .services.settings_editor import SettingsEditor
+from .services.suppressions import Suppressions
 from .services.trackers import Trackers
+from .services.undo import Undo
 from .services.watcher import LibraryWatcher
 from .services.webhook_setup import WebhookSetup
 from .settings import Settings
@@ -42,6 +44,7 @@ log = logging.getLogger(__name__)
 HEALTH_EVERY = 300  # seconds
 UPDATE_EVERY = 144  # health checks (12 hours) between update checks and removing old saved .torrent files
 SUMMARY_CHECK_EVERY = 30  # seconds
+DEFAULT_SWEEP_EVERY = 15 * 60  # seconds, when the configured interval can't be read
 
 
 def spawn(fn: Callable[..., Any], *args: Any, name: str | None = None) -> threading.Thread:
@@ -197,16 +200,24 @@ class Shredarr:
         while True:
             ev = self.events.get()
             try:
-                self.deletes.handle(ev)
-            except Exception as e:  # reported; the next event is still handled
-                self.activity.error(f"  error: {e!r}")
-            if self.events.empty():
-                self.cleaner.safe_sweep()
+                try:
+                    self.deletes.handle(ev)
+                except Exception as e:  # reported; the next event is still handled
+                    self.activity.error(f"  error: {e!r}")
+                if self.events.empty():
+                    self.cleaner.safe_sweep()
+            except Exception:  # e.g. the activity log itself failing: never let the worker thread die
+                log.exception("event worker")
 
     def sweep_loop(self) -> None:
         while True:
-            self.cleaner.safe_sweep()
-            time.sleep(self.config.load().check_interval)
+            wait: float = DEFAULT_SWEEP_EVERY
+            try:
+                self.cleaner.safe_sweep()
+                wait = self.config.load().check_interval
+            except Exception:  # e.g. an unreadable config.json: the sweeps must not stop for good
+                log.exception("sweep loop")
+            time.sleep(wait)
 
     def summary_loop(self) -> None:
         sent = None

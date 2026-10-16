@@ -58,7 +58,7 @@ def test_oldest_database(lab: Lab, tmp_path) -> None:
     con.close()
     s.start()
     try:
-        assert s.sql("pragma user_version") == [(2,)]
+        assert s.sql("pragma user_version") == [(3,)]
         assert s.sql("select hash, mode, days, ratio from overrides") == [("a", "ratio", None, 3.0)]
         assert {r[1] for r in s.sql("pragma table_info(pending)")} >= {"undo", "event", "content"}
         assert {r[1] for r in s.sql("pragma table_info(cleaned)")} >= {"title", "reason", "restore", "redl_how"}

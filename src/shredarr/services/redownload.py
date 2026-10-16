@@ -173,6 +173,8 @@ class Redownloader:
             f"Redownload: {title}" + ("" if is_movie else f" {episodes_text(info.get('episodes') or [])}")
         )
         try:
+            if how == "same" and not self.saved.has(info.get("hash")):  # checked before anything is changed
+                raise ServiceError("the saved .torrent file is gone; try Search again instead")
             arr = self.connections.arr(info["app"])
             if isinstance(arr, RadarrClient):
                 self.activity.info("  done: " + self.restorer.ensure_movie(arr, info["movie"]))
@@ -258,20 +260,24 @@ class Redownloader:
     def check(self) -> None:
         """Re-added torrents are normally imported by Sonarr/Radarr on their own. If one has finished but still isn't
         in the library after a while, nudge the import (or unpack a RAR release first)."""
-        for r in self.redownloads.open():
-            t = self.connections.torrents.get(r.hash)
+        rows = self.redownloads.open()
+        if not rows:
+            return
+        ts = {t["hash"]: t for t in self.connections.torrents.all([r.hash for r in rows])}  # one request for all
+        self.library.forget(roots=False, index=False, groups=False, titles=False)  # import history: read once, fresh
+        for r in rows:
+            t = ts.get(r.hash)
             if not t:
                 if time.time() - r.ts > 3600:
                     self.redownloads.done(r.hash)
                 continue
             self.library.forget_torrent(r.hash)
-            self.library.forget(roots=False, index=False, groups=False, titles=False)
             if self.library.in_library(t):
                 self.redownloads.done(r.hash)
                 media_server(self.connections).rescan(
                     [
                         i["path"]
-                        for i in self.library.imports(0).get(r.hash, [])
+                        for i in self.library.imports(60).get(r.hash, [])
                         if i["path"] and os.path.exists(i["path"])
                     ]
                 )
@@ -281,8 +287,8 @@ class Redownloader:
             if t["progress"] < 1 or time.time() - max(r.ts, r.last_try or 0) < NUDGE_AFTER or r.tries >= NUDGE_TRIES:
                 continue
             self.redownloads.tried(r.hash)
-            arr = self.connections.arr(r.app)
             try:
+                arr = self.connections.arr(r.app)
                 how = self.restorer.restore(arr, "movie" if kind_of(r.app) == "radarr" else "tv", t)
                 self.activity.info(f"Redownload of '{r.title}' imported: {how}")
             except Exception as e:  # tried again next time

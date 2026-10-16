@@ -9,10 +9,11 @@ import time
 from collections.abc import Callable
 
 from ..config import JSON
-from ..files import file_key, videos_in
+from ..files import file_key
 from .activity import Activity
-from .deletes import Suppressions
 from .library import Library
+from .media_files import videos_in
+from .suppressions import Suppressions
 
 MASS_VANISH = (20, 0.2)  # more files than this, and more than this share of them, gone at once: a disk went offline
 
@@ -36,6 +37,7 @@ class LibraryWatcher:
         self.files: dict[str, list[int]] | None = None
         self.missing: dict[str, float] = {}
         self.offline = False
+        self.vanished = 0  # how many files the last "vanished at once" message was about, so it's logged once
 
     def library_files(self) -> dict[str, list[int]] | None:
         """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be
@@ -76,15 +78,23 @@ class LibraryWatcher:
         prev = self.previous()
         gone = [p for p in (prev or {}) if p not in now]
         if prev and len(gone) > MASS_VANISH[0] and len(gone) > MASS_VANISH[1] * len(prev):
-            # a disk or share that went away isn't a delete: keep the old list and look again next time
-            return self.activity.info(
-                f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
-                "going offline, not a delete, so nothing was done"
-            )
+            # a disk or share that went away isn't a delete: keep the old list and look again next time. Said once
+            # (not on every look while it stays that way), as a problem, so it's also sent as a notification: if it
+            # was a real delete after all, nothing else will clean it up
+            if len(gone) != self.vanished:
+                self.vanished = len(gone)
+                self.activity.error(
+                    f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
+                    "going offline, not a delete, so nothing was done. If you did delete them, their torrents "
+                    "show under Leftovers on the dashboard"
+                )
+            return None
+        self.vanished = 0
         self.files = now
-        with open(self.state_file + ".tmp", "w") as f:
-            json.dump(now, f)
-        os.replace(self.state_file + ".tmp", self.state_file)
+        if now != prev:  # usually nothing changed between looks: don't rewrite the whole list every minute
+            with open(self.state_file + ".tmp", "w") as f:
+                json.dump(now, f)
+            os.replace(self.state_file + ".tmp", self.state_file)
         moved = {tuple(k) for k in now.values()}
         t = time.time()
         for p in gone:

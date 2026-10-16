@@ -49,10 +49,16 @@ def _v1_shredarr_1x(con: sqlite3.Connection) -> None:
 
 def _v2_log_level(con: sqlite3.Connection) -> None:
     """Activity log lines that report a problem are marked as such (they used to be recognized by their wording)."""
-    con.execute("alter table log add column level text")
+    if "level" not in {r[1] for r in con.execute("pragma table_info(log)")}:
+        con.execute("alter table log add column level text")
 
 
-MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_v1_shredarr_1x, _v2_log_level]
+def _v3_history_index(con: sqlite3.Connection) -> None:
+    """History is read newest first and summed by date on every refresh, and it keeps growing."""
+    con.execute("create index if not exists cleaned_ts on cleaned(ts)")
+
+
+MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_v1_shredarr_1x, _v2_log_level, _v3_history_index]
 
 
 class Database:
@@ -68,6 +74,9 @@ class Database:
                 version = con.execute("pragma user_version").fetchone()[0]
                 for i, step in enumerate(MIGRATIONS[version:], start=version + 1):
                     with con:
+                        # sqlite3 only opens a transaction by itself before inserts and updates, not before
+                        # "alter table": begin one, so a step and its version number are saved together or not at all
+                        con.execute("begin")
                         step(con)
                         con.execute(f"pragma user_version = {i}")
             finally:

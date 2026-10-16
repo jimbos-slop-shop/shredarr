@@ -4,21 +4,26 @@ update checks, and the torrent client's sign-in retry."""
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 import time
 from collections.abc import Iterator
 from typing import Any
 
 import httpx
 import pytest
+from starlette.requests import Request
 
 from shredarr.app import Shredarr
-from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable
+from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed, parse_body
 from shredarr.config import NOTIFY_DEFAULTS
+from shredarr.db import MIGRATIONS
 from shredarr.services import notifications
 from shredarr.services.connections import TorrentService
 from shredarr.services.health import Updates
 from shredarr.services.settings_editor import SettingsEditor
 from shredarr.settings import Settings
+from shredarr.web.deps import client_ip
 from tests.fakes.server import FakeServer, Response
 
 
@@ -131,8 +136,10 @@ def test_torrent_client_signs_in_again(core: Shredarr, monkeypatch: pytest.Monke
         ServiceUnreachable("down"),
         ServiceError("odd"),
         None,
+        SignInFailed("wrong password"),
     ]
     made: list[object] = []
+    closed: list[object] = []
 
     class Client:
         def torrents(self, hashes: Any = None) -> list[Any]:
@@ -140,6 +147,9 @@ def test_torrent_client_signs_in_again(core: Shredarr, monkeypatch: pytest.Monke
             if fail:
                 raise fail
             return []
+
+        def close(self) -> None:
+            closed.append(self)
 
     def make(kind: str, conf: Any, local: Any = None) -> Client:
         made.append(kind)
@@ -151,7 +161,22 @@ def test_torrent_client_signs_in_again(core: Shredarr, monkeypatch: pytest.Monke
     with pytest.raises(ServiceUnreachable):
         ts.all()
     assert ts.all() == []  # a client error, then a new client
+    with pytest.raises(SignInFailed):  # a wrong password isn't tried twice
+        ts.all()
+    assert ts.all([]) == []  # no hashes asked for: no torrents, without asking the client
     assert len(made) == 4 and not outcomes
+    assert len(closed) == 4  # every client that was thrown away was closed
+
+
+def test_web_page_instead_of_json() -> None:
+    """A reverse proxy's sign-in page is an error, not an answer; JSON is read even with leading whitespace."""
+    page = httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>sign in</html>")
+    with pytest.raises(ServiceError, match="web page"):
+        parse_body(page)
+    assert parse_body(httpx.Response(200, headers={"content-type": "application/json"}, content=b' {"a": 1}')) == {
+        "a": 1
+    }
+    assert parse_body(httpx.Response(200, content=b"ok")) == "ok"
 
 
 def test_extra_instance_keys(core: Shredarr) -> None:
@@ -182,3 +207,36 @@ def test_config_is_reread_when_it_changes(core: Shredarr) -> None:
         json.dump({"dry_run": False}, f)
     time.sleep(0.01)
     assert core.config.load().dry_run is False
+
+
+def test_config_file_is_private_from_the_start(core: Shredarr) -> None:
+    with open(core.config.path + ".tmp", "w") as f:  # left over from an earlier save, with the default mode
+        f.write("{}")
+    os.chmod(core.config.path + ".tmp", 0o644)
+    core.config.save({"dry_run": True})
+    assert os.stat(core.config.path).st_mode & 0o777 == 0o600
+
+
+def test_migration_finishes_a_step_that_was_cut_off(core: Shredarr) -> None:
+    """A 1.x database where the log.level column was added but the version number wasn't saved."""
+    core.db.migrate()
+    con = sqlite3.connect(core.settings.db_path)
+    con.execute("pragma user_version = 1")
+    con.close()
+    core.db.migrate()
+    con = sqlite3.connect(core.settings.db_path)
+    assert con.execute("pragma user_version").fetchone() == (len(MIGRATIONS),)
+    con.close()
+
+
+def test_sign_in_limit_address() -> None:
+    """X-Forwarded-For only counts from a proxy on a private network, and only its last (proxy-added) entry."""
+
+    def ip(peer: str, forwarded: str | None = None) -> str:
+        headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+        return client_ip(Request({"type": "http", "client": (peer, 1234), "headers": headers}))
+
+    assert ip("8.8.8.8") == "8.8.8.8"
+    assert ip("8.8.8.8", "10.9.9.9") == "8.8.8.8"  # straight from the internet: the header is ignored
+    assert ip("172.18.0.2", "198.51.100.7") == "198.51.100.7"  # a proxy in the Docker network
+    assert ip("127.0.0.1", "1.1.1.1, 198.51.100.7") == "198.51.100.7"  # the first entry is whatever the client sent

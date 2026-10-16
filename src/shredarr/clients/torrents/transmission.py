@@ -17,7 +17,7 @@ from transmission_rpc.error import (
 )
 
 from ...config import JSON
-from ..base import TIMEOUT, ServiceError, ServiceUnreachable
+from ..base import TIMEOUT, ServiceError, ServiceUnreachable, SignInFailed
 from .base import Torrent
 
 FIELDS = [
@@ -45,7 +45,7 @@ def _errors() -> Iterator[None]:
     try:
         yield
     except TransmissionAuthError as e:
-        raise ServiceError("wrong username or password") from e
+        raise SignInFailed("wrong username or password") from e
     except (TransmissionConnectError, TransmissionTimeoutError) as e:
         raise ServiceUnreachable(str(e)) from e
     except TransmissionError as e:
@@ -124,6 +124,9 @@ class TransmissionClient:
     def add(self, content: bytes, filename: str, category: str) -> None:
         with _errors():
             self.api.add_torrent(content, labels=[category] if category else None)
+
+    def close(self) -> None:
+        self.api.__exit__(None, None, None)  # transmission-rpc closes its HTTP session on leaving a with block
 
     def version(self) -> str:
         with _errors():

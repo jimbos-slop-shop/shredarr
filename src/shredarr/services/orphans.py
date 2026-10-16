@@ -6,18 +6,18 @@ import os
 import time
 from typing import Any
 
-from ..clients.servarr import RadarrClient, SonarrClient
+from ..clients.base import NotConfigured, ServiceHTTPError
 from ..config import JSON, Config, ConfigStore, kind_of
 from ..files import nlink
 from ..repositories import HistoryRepo
 from ..text import episodes_label, human
 from .activity import Activity
 from .connections import Connections
-from .deletes import Suppressions
 from .library import Library
 from .notifications import Notifier
-from .removal import MediaRemoval, Step
+from .removal import MediaRemoval, Step, run_steps
 from .snapshots import movie_settings, season_monitoring, series_settings
+from .suppressions import Suppressions
 
 Done = tuple[str, int, JSON]  # (label, bytes freed, what Redownload needs)
 
@@ -57,8 +57,7 @@ class Orphans:
             return self._cache
         has_torrent, items = self.has_torrent(), []
         local = self.connections.paths().local
-        for inst, radarr in self.connections.arrs("radarr"):
-            assert isinstance(radarr, RadarrClient)
+        for inst, radarr in self.connections.radarrs():
             for m in radarr.movies():
                 f = m.get("movieFile")
                 if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
@@ -77,8 +76,7 @@ class Orphans:
                             "path": p,
                         }
                     )
-        for inst, sonarr in self.connections.arrs("sonarr"):
-            assert isinstance(sonarr, SonarrClient)
+        for inst, sonarr in self.connections.sonarrs():
             for s in sonarr.all_series():
                 if not (s.get("statistics") or {}).get("episodeFileCount"):
                     continue
@@ -119,7 +117,10 @@ class Orphans:
         for i in ids:
             app, *rest = str(i).split(":")
             if kind_of(app) == "radarr" and rest:
-                m = self.connections.radarr(app).movie(int(rest[0]))
+                try:
+                    m = self.connections.radarr(app).movie(int(rest[0]))
+                except (ServiceHTTPError, NotConfigured):  # already gone (or that Radarr was removed): skip it
+                    continue
                 f = m.get("movieFile")
                 if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
                     paths.add(p)
@@ -132,14 +133,14 @@ class Orphans:
                         )
                     )
             elif kind_of(app) == "sonarr" and len(rest) == 2:
-                sid, sn, sonarr = int(rest[0]), int(rest[1]), self.connections.sonarr(app)
-                s = sonarr.series(sid)
-                lone = {
-                    f["id"]: f
-                    for f in sonarr.episode_files(sid)
-                    if f["seasonNumber"] == sn and not has_torrent(local(f["path"]))
-                }
-                eps = [e for e in sonarr.episodes(sid) if e.get("episodeFileId") in lone]
+                sid, sn = int(rest[0]), int(rest[1])
+                try:
+                    sonarr = self.connections.sonarr(app)
+                    s, files, all_eps = sonarr.series(sid), sonarr.episode_files(sid), sonarr.episodes(sid)
+                except (ServiceHTTPError, NotConfigured):  # already gone (or that Sonarr was removed): skip it
+                    continue
+                lone = {f["id"]: f for f in files if f["seasonNumber"] == sn and not has_torrent(local(f["path"]))}
+                eps = [e for e in all_eps if e.get("episodeFileId") in lone]
                 if eps:
                     paths |= {local(f["path"]) for f in lone.values()}
                     series.append((app, s, eps))
@@ -165,16 +166,7 @@ class Orphans:
         if not c.dry_run:
             self.suppressions.add_paths(paths)
         self.activity.info(f"Delete media with no torrent: {', '.join(x[0] for x in done) or 'nothing left to delete'}")
-        for step in steps:
-            if c.dry_run:
-                self.activity.info(f"  [dry run] would: {step.desc}")
-                continue
-            try:
-                if step.run:
-                    step.run()
-                self.activity.info(f"  done: {step.desc}")
-            except Exception as e:  # one failed step shouldn't stop the others
-                self.activity.error(f"  FAILED: {step.desc}: {e}")
+        run_steps(steps, c.dry_run, self.activity)
         if not c.dry_run and done:
             for label, size, restore in done:
                 self.history.add(

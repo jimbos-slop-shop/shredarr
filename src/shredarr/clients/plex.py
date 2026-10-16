@@ -24,11 +24,19 @@ class Section:
 class PlexClient:
     def __init__(self, url: str, token: str) -> None:
         self.url, self.token = url.rstrip("/"), token
+        self._server: PlexServer | None = None
 
-    def _call(self, fn: Callable[[PlexServer], T]) -> T:
-        """Connect and run fn, turning plexapi's errors into Shredarr's."""
+    def _call(self, fn: Callable[[PlexServer], T], fresh: bool = False) -> T:
+        """Run fn on the server, turning plexapi's errors into Shredarr's. Connecting costs a request of its own, so
+        the connection is kept for the next call, and made again after any error. fresh: connect again anyway
+        (plexapi keeps what it read, such as the library sections, for as long as the connection lives)."""
+        done = False
         try:
-            return fn(PlexServer(self.url, self.token, timeout=TIMEOUT))
+            if self._server is None or fresh:
+                self._server = PlexServer(self.url, self.token, timeout=TIMEOUT)
+            out = fn(self._server)
+            done = True
+            return out
         except Unauthorized as e:
             raise ServiceHTTPError(401, "Unauthorized") from e
         except NotFound as e:
@@ -37,12 +45,15 @@ class PlexClient:
             raise ServiceHTTPError(400, str(e)) from e
         except requests.RequestException as e:
             raise ServiceUnreachable(str(e)) from e
+        finally:
+            if not done:
+                self._server = None
 
     def describe(self) -> str:
-        return self._call(lambda s: f"Plex {s.version.split('-')[0]} · {s.friendlyName}")
+        return self._call(lambda s: f"Plex {s.version.split('-')[0]} · {s.friendlyName}", fresh=True)
 
     def sections(self) -> list[Section]:
-        return self._call(lambda s: [Section(str(x.key), list(x.locations)) for x in s.library.sections()])
+        return self._call(lambda s: [Section(str(x.key), list(x.locations)) for x in s.library.sections()], fresh=True)
 
     def scan(self, section_key: str, path: str | None = None) -> None:
         """Scan a library section, or only one folder of it."""

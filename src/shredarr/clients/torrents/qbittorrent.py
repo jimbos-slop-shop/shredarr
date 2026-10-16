@@ -9,7 +9,7 @@ from typing import Any
 import qbittorrentapi
 
 from ...config import JSON
-from ..base import TIMEOUT, ServiceError, ServiceHTTPError, ServiceUnreachable
+from ..base import TIMEOUT, ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed
 from .base import Torrent
 
 
@@ -18,7 +18,7 @@ def _errors() -> Iterator[None]:
     try:
         yield
     except qbittorrentapi.LoginFailed as e:
-        raise ServiceError("wrong username or password") from e
+        raise SignInFailed("wrong username or password") from e
     except qbittorrentapi.HTTPError as e:
         raise ServiceHTTPError(getattr(e, "http_status_code", 0) or 0, str(e)) from e
     except qbittorrentapi.APIConnectionError as e:
@@ -73,6 +73,9 @@ class QBittorrentClient:
     def add(self, content: bytes, filename: str, category: str) -> None:
         with _errors():
             self.api.torrents_add(torrent_files={filename: content}, category=category or "")
+
+    def close(self) -> None:
+        """Nothing to do: qbittorrent-api has no public way to close its session."""
 
     def version(self) -> str:
         with _errors():

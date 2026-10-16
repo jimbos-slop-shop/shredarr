@@ -7,6 +7,6 @@
   "  done: Delete torrent 'Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB' and its downloaded data from qBittorrent",
   "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
   "Undo: Raygun",
-  "  done: re-added to Radarr",
-  "  done: took 1 torrent off the cleanup list"
+  "  done: took 1 torrent off the cleanup list",
+  "  done: re-added to Radarr"
 ]

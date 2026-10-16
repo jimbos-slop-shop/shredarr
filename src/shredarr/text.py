@@ -1,11 +1,9 @@
-"""How things are written for people: sizes, durations, episode ranges, rules."""
+"""How things are written for people: sizes, durations, episode ranges."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any
-
-from .config import Rule
 
 
 def human(n: float) -> str:
@@ -39,17 +37,6 @@ def episodes_label(eps: Iterable[dict[str, Any]]) -> str:
 def episodes_text(eps: Iterable[Iterable[int]]) -> str:
     """[[season, episode], ...] -> episodes_label."""
     return episodes_label([{"seasonNumber": s, "episodeNumber": e} for s, e in (tuple(x) for x in eps)])
-
-
-def rule_text(r: Rule) -> str:
-    """A seeding rule in a few words: "14 days or ratio 2"."""
-    if r.get("mode") == "never":
-        return "never delete"
-    days, ratio = r.get("min_seed_days"), r.get("min_ratio")
-    p = ([f"{days:g} days"] if r["mode"] != "ratio" and days is not None else []) + (
-        [f"ratio {ratio:g}"] if r["mode"] != "days" and ratio is not None else []
-    )
-    return (" and " if r["mode"] == "both" else " or ").join(p) or "no rule"
 
 
 def tail(path: str) -> str:

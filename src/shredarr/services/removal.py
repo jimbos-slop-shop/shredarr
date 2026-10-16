@@ -10,9 +10,10 @@ from typing import Any
 from ..clients.base import ServiceHTTPError
 from ..config import JSON, Config
 from ..text import episodes_label, tail
+from .activity import Activity
 from .connections import Connections
-from .deletes import Suppressions
 from .media_server import media_server
+from .suppressions import Suppressions
 
 
 @dataclass
@@ -23,6 +24,22 @@ class Step:
     @property
     def note(self) -> bool:
         return self.run is None
+
+
+def run_steps(steps: Iterable[Step], dry_run: bool, activity: Activity) -> None:
+    """Run confirmed steps in order, logging each one. A failed step is reported and the others still run; in dry run
+    nothing runs, the log only says what would have."""
+    for step in steps:
+        if step.run is None:
+            activity.info(f"  {step.desc}")
+        elif dry_run:
+            activity.info(f"  [dry run] would: {step.desc}")
+        else:
+            try:
+                step.run()
+                activity.info(f"  done: {step.desc}")
+            except Exception as e:  # one failed step shouldn't stop the others
+                activity.error(f"  FAILED: {step.desc}: {e}")
 
 
 class MediaRemoval:

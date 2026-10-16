@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from ...config import JSON
-from ..base import TIMEOUT, ServiceError, ServiceHTTPError, ServiceUnreachable
+from ..base import TIMEOUT, ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed
 from .base import Torrent
 
 KEYS = [
@@ -55,13 +55,17 @@ class DelugeClient:
         self.url = url if url.endswith("/json") else url + "/json"
         self._http = httpx.Client(timeout=TIMEOUT)
         self._ids = itertools.count(1)
-        if not self.rpc("auth.login", conf.get("password", "")):
-            raise ServiceError("wrong password")
-        if not self.rpc("web.connected"):
-            hosts = self.rpc("web.get_hosts")
-            if not hosts:
-                raise ServiceError("the Deluge web UI isn't connected to a Deluge daemon")
-            self.rpc("web.connect", hosts[0][0])
+        try:
+            if not self.rpc("auth.login", conf.get("password", "")):
+                raise SignInFailed("wrong password")
+            if not self.rpc("web.connected"):
+                hosts = self.rpc("web.get_hosts")
+                if not hosts:
+                    raise ServiceError("the Deluge web UI isn't connected to a Deluge daemon")
+                self.rpc("web.connect", hosts[0][0])
+        except BaseException:  # the caller never gets this client, so it can't close it
+            self._http.close()
+            raise
 
     def rpc(self, method: str, *params: Any) -> Any:
         try:
@@ -70,7 +74,10 @@ class DelugeClient:
             raise ServiceUnreachable(str(e) or type(e).__name__) from e
         if r.status_code >= 400:
             raise ServiceHTTPError(r.status_code, r.reason_phrase)
-        out = r.json()
+        try:
+            out = r.json()
+        except ValueError as e:
+            raise ServiceError("Deluge's answer wasn't valid JSON (check the address)") from e
         if out.get("error"):
             raise ServiceError((out["error"] or {}).get("message") or "Deluge error")
         return out.get("result")

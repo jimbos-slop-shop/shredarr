@@ -137,11 +137,10 @@ def activity(core: Core) -> Response:
 @router.post("/api/queue")
 def queue_leftovers(core: Core, body: JsonBody) -> Response:
     """Leftovers (torrents whose media is gone, but which were never queued) go on the cleanup list."""
-    hashes = [h for h in body.get("hashes", []) if HASH.fullmatch(h)]
     ts = {t["hash"]: t for t in core.connections.torrents.all()}
+    hashes = [h for h in body.get("hashes", []) if HASH.fullmatch(h) and h in ts]  # only ones still in the client
     for h in hashes:
-        if h in ts:
-            core.queue.add([h], core.library.title_of(h) or ts[h]["name"], "leftover")
+        core.queue.add([h], core.library.title_of(h) or ts[h]["name"], "leftover")
     core.activity.info(f"Added {len(hashes)} leftover torrent{'s' * (len(hashes) != 1)} to the cleanup list")
     spawn(core.cleaner.safe_sweep)
     return text("ok")

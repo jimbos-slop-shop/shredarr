@@ -22,8 +22,9 @@ from ..clients.base import ServiceError
 from ..clients.servarr import DOWNLOAD_FOLDER_IMPORTED, SonarrClient
 from ..clients.torrents import Torrent
 from ..config import ARR_KINDS, JSON
-from ..files import FileKey, file_key, files_under, videos_in
+from ..files import FileKey, PathMapper, file_key, files_under
 from .connections import Connections
+from .media_files import videos_in
 
 log = logging.getLogger(__name__)
 
@@ -77,12 +78,12 @@ class Library:
             self._roots = _Cache(time.time(), sorted(set(dirs)))
         return list(self._roots.value)
 
-    def library_path(self, p: str | None) -> str | None:
+    def library_path(self, p: str | None, paths: PathMapper | None = None) -> str | None:
         """History keeps the path at import time. If a library root folder moved since (e.g. /media/Movies ->
         /data/Media/Movies), find the file under the current root folder of the same name."""
         if not p:
             return p
-        p = self.connections.paths().local(p)
+        p = (paths or self.connections.paths()).local(p)
         if os.path.exists(p):
             return p
         for root in self.root_dirs():
@@ -120,18 +121,24 @@ class Library:
         self._load_imports(max_age)
         return self._imports.value[1]  # type: ignore[no-any-return]
 
+    def import_maps(self, max_age: float = 300) -> tuple[dict[str, list[Import]], dict[str, str]]:
+        """imports() and import_owner() from one read of the history."""
+        self._load_imports(max_age)
+        return self._imports.value  # type: ignore[no-any-return]
+
     def _load_imports(self, max_age: float) -> None:
         if self._imports.fresh(max_age):
             return
         m: dict[str, list[Import]] = {}
         owner: dict[str, str] = {}
+        paths = self.connections.paths()  # once, not per history row
         for inst, arr in self.connections.arrs():
             try:
                 for h in arr.history(
                     DOWNLOAD_FOLDER_IMPORTED, newest_first=True
                 ):  # so the first import of a path is the one there now
                     if h.get("downloadId"):
-                        path = self.library_path((h.get("data") or {}).get("importedPath"))
+                        path = self.library_path((h.get("data") or {}).get("importedPath"), paths)
                         m.setdefault(h["downloadId"].lower(), []).append(
                             {
                                 "app": inst.key,
@@ -170,8 +177,7 @@ class Library:
             out["seriesId"] = out["seriesId"] or i.get("seriesId")
         if out["seriesId"] and ep_ids:
             try:
-                sonarr = self.connections.arr(out["app"])
-                assert isinstance(sonarr, SonarrClient)
+                sonarr = self.connections.sonarr(out["app"])
                 eps = sonarr.episodes(out["seriesId"])
                 out["episodes"] = sorted([e["seasonNumber"], e["episodeNumber"]] for e in eps if e["id"] in ep_ids)
             except (ServiceError, AssertionError):

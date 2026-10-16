@@ -74,3 +74,14 @@ def met_parts(r: Rule, t: Torrent) -> JSON:
         else None,
         "ratio_met": t["ratio"] >= ratio if r["mode"] not in ("days", "never") and ratio is not None else None,
     }
+
+
+def rule_text(r: Rule) -> str:
+    """A seeding rule in a few words: "14 days or ratio 2"."""
+    if r.get("mode") == "never":
+        return "never delete"
+    days, ratio = r.get("min_seed_days"), r.get("min_ratio")
+    p = ([f"{days:g} days"] if r["mode"] != "ratio" and days is not None else []) + (
+        [f"ratio {ratio:g}"] if r["mode"] != "days" and ratio is not None else []
+    )
+    return (" and " if r["mode"] == "both" else " or ").join(p) or "no rule"

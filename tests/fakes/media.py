@@ -65,7 +65,8 @@ class FakeJellyfin(FakeServer):
 
     def auth(self, fn: Any) -> Any:
         def wrapped(r: Request) -> Any:
-            if r.headers.get("x-emby-token") != self.api_key:
+            # like Jellyfin 12 with legacy authorization off: only the Authorization header counts
+            if r.headers.get("authorization") != f'MediaBrowser Token="{self.api_key}"':
                 return Response(401, "Unauthorized")
             return fn(r)
 

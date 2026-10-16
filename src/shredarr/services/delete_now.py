@@ -15,11 +15,11 @@ from ..text import episodes_label, human
 from .activity import Activity
 from .cleanup import Cleaner
 from .connections import Connections
-from .deletes import Suppressions
 from .library import Library
 from .media_server import media_server
 from .notifications import Notifier
-from .removal import MediaRemoval, Step
+from .removal import MediaRemoval, Step, run_steps
+from .suppressions import Suppressions
 from .trackers import tracker_host
 
 
@@ -67,11 +67,10 @@ class DeleteNow:
         group = sorted(
             self.library.cross_seed_groups(list(ts.values()), 0).get(h, {h}) if t else {h}, key=lambda x: x != h
         )
-        imap = self.library.imports(0)
+        imap, owner = self.library.import_maps(0)
         imps = [i for x in group for i in imap.get(x, [])]
         keys = set().union(*[self.library.torrent_keys(ts[x]) for x in group if x in ts])
         idx = self.library.index(0)
-        owner = self.library.import_owner(0)
         paths = {p for k, p in idx.items() if k in keys} | {
             i["path"] for i in imps if i["path"] and owner.get(i["path"]) in group and os.path.exists(i["path"])
         }
@@ -175,17 +174,7 @@ class DeleteNow:
         )
         if not c.dry_run:
             self.suppressions.add_paths(plan.paths)
-        for step in plan.steps:
-            if step.run is None:
-                self.activity.info(f"  {step.desc}")
-            elif c.dry_run:
-                self.activity.info(f"  [dry run] would: {step.desc}")
-            else:
-                try:
-                    step.run()
-                    self.activity.info(f"  done: {step.desc}")
-                except Exception as e:  # one failed step shouldn't stop the others
-                    self.activity.error(f"  FAILED: {step.desc}: {e}")
+        run_steps(plan.steps, c.dry_run, self.activity)
         if c.dry_run:
             return None
         self.pending.remove(*(plan.group or [h]))

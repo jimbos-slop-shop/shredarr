@@ -38,3 +38,7 @@ class TorrentClient(Protocol):
     def version(self) -> str:
         """e.g. "qBittorrent v5.1.2"; fails on wrong credentials."""
         ...
+
+    def close(self) -> None:
+        """Let go of the connection."""
+        ...

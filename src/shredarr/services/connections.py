@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from ..clients.base import NotConfigured, ServiceError, ServiceHTTPError, refuse_if_read_only
+from ..clients.base import NotConfigured, ServiceError, ServiceHTTPError, SignInFailed, refuse_if_read_only
 from ..clients.jellyfin import JellyfinClient
 from ..clients.plex import PlexClient
 from ..clients.seerr import SeerrClient
 from ..clients.servarr import ArrClient, ProwlarrClient, RadarrClient, SonarrClient
 from ..clients.torrents import Torrent, TorrentClient, make_client
-from ..clients.torrents.deluge import DelugeClient
-from ..config import ARR_KINDS, CLIENTS, JSON, SERVICES, ArrInstance, ConfigStore, api_url, kind_of
+from ..config import (
+    ARR_KINDS,
+    CLIENTS,
+    JSON,
+    SECRET_KEYS,
+    SERVICES,
+    ArrInstance,
+    Config,
+    ConfigStore,
+    api_url,
+    base_url,
+    kind_of,
+)
 from ..files import PathMapper
 
 T = TypeVar("T")
@@ -44,13 +56,19 @@ class Connections:
 
     # ------------------------------------------------------------------ Sonarr / Radarr
     def arr_client(self, inst: ArrInstance) -> SonarrClient | RadarrClient:
-        url, key = inst.conf["url"], inst.conf.get("api_key", "")
-        if inst.kind == "sonarr":
-            return self._client(SonarrClient, url, key)
-        return self._client(RadarrClient, url, key)
+        return self._arr(SonarrClient, inst) if inst.kind == "sonarr" else self._arr(RadarrClient, inst)
+
+    def _arr[A: (SonarrClient, RadarrClient)](self, cls: type[A], inst: ArrInstance) -> A:
+        return self._client(cls, inst.conf["url"], inst.conf.get("api_key", ""))
 
     def arrs(self, kind: str | None = None) -> list[tuple[ArrInstance, SonarrClient | RadarrClient]]:
         return [(x, self.arr_client(x)) for x in self.config.load().arr_instances(kind)]
+
+    def sonarrs(self) -> list[tuple[ArrInstance, SonarrClient]]:
+        return [(x, self._arr(SonarrClient, x)) for x in self.config.load().arr_instances("sonarr")]
+
+    def radarrs(self) -> list[tuple[ArrInstance, RadarrClient]]:
+        return [(x, self._arr(RadarrClient, x)) for x in self.config.load().arr_instances("radarr")]
 
     def arr(self, key: str) -> SonarrClient | RadarrClient:
         """A Sonarr/Radarr instance by key. Falls back to the main instance of that kind if the instance was removed
@@ -99,9 +117,17 @@ class TorrentService:
 
     def reset(self) -> None:
         with self._lock:
+            self._drop()
+
+    def _drop(self) -> None:
+        if self._client is not None:
+            with contextlib.suppress(Exception):  # it's being thrown away either way
+                self._client.close()
             self._client = None
 
     def _call(self, fn: Callable[[TorrentClient], T]) -> T:
+        """Call the client, signing in again once if the session expired. A wrong password isn't tried twice: some
+        clients block an address after a few failed sign-ins."""
         for attempt in (0, 1):
             with self._lock:
                 try:
@@ -112,9 +138,9 @@ class TorrentService:
                         )
                     return fn(self._client)
                 except ServiceError as e:
-                    self._client = None
+                    self._drop()
                     signed_out = isinstance(e, ServiceHTTPError) and e.status in (401, 403, 409)
-                    if attempt or not (signed_out or type(e) is ServiceError):
+                    if attempt or isinstance(e, SignInFailed) or not (signed_out or type(e) is ServiceError):
                         raise
         raise AssertionError("unreachable")
 
@@ -122,6 +148,8 @@ class TorrentService:
         """All torrents (or the given hashes), with paths as Shredarr sees them."""
         if isinstance(hashes, str):
             hashes = [hashes]
+        if hashes == []:  # the clients read "no hashes" as "every torrent"
+            return []
         ts = self._call(lambda c: c.torrents(hashes))
         paths = self.connections.paths()
         for t in ts:
@@ -143,6 +171,16 @@ class TorrentService:
         self._call(lambda c: c.add(content, filename, category))
 
 
+def with_saved_secrets(c: Config, svc: str, conf: JSON) -> JSON:
+    """Settings → Test leaves a saved key or password blank, meaning "the saved one". It's only filled in when the
+    address is the saved one too: otherwise the saved key would be sent to whatever address was typed."""
+    saved = c.service(svc) or next((x for x in c.get("extra_arrs", []) if x.get("key") == svc), {})
+    kind = kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
+    if base_url(kind, conf.get("url")).casefold() != base_url(kind, saved.get("url")).casefold():
+        return conf
+    return {**conf, **{k: saved[k] for k in SECRET_KEYS if not conf.get(k) and saved.get(k)}}
+
+
 def describe_service(svc: str, conf: JSON) -> str:
     """Can Shredarr reach this app with these settings? Returns what it is (e.g. "Sonarr 4.0.15"), or raises."""
     url = (conf or {}).get("url", "").strip().rstrip("/")
@@ -159,8 +197,7 @@ def describe_service(svc: str, conf: JSON) -> str:
         try:
             return client.version()
         finally:
-            if isinstance(client, DelugeClient):
-                client.close()
+            client.close()
     if svc == "plex":
         return PlexClient(url, key).describe()
     if svc == "seerr":

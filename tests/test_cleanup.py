@@ -102,6 +102,7 @@ def test_deletion_delay(lab: Lab, start: StartFn) -> None:
 
 def test_torrent_removed_from_the_client_leaves_the_queue(lab: Lab, start: StartFn) -> None:
     m = lab.add_movie("Spring", 2019, ratio=0.1)
+    lab.add_movie("Charge", 2022)  # still in the client, so the client isn't empty
     s = start()
     lab.delete_movie_files(m)
     s.webhook(lab.movie_event(m))
@@ -111,6 +112,22 @@ def test_torrent_removed_from_the_client_leaves_the_queue(lab: Lab, start: Start
     s.sweep()
     s.wait_log("is gone from qBittorrent; dropping it from the queue")
     assert m.torrent.hash not in s.pending()
+
+
+def test_an_empty_client_keeps_the_queue_for_now(lab: Lab, start: StartFn) -> None:
+    """A client that lists no torrents at all may just be starting up."""
+    m = lab.add_movie("Spring", 2019, ratio=0.1)
+    s = start()
+    lab.delete_movie_files(m)
+    s.webhook(lab.movie_event(m))
+    assert m.torrent
+    s.wait_status(m.torrent.hash, "^seeding")
+    lab.remove_torrent(m.torrent.hash, True)
+    s.sweep()
+    s.wait_log("reports no torrents at all; keeping the cleanup queue")
+    s.sweep()
+    assert m.torrent.hash in s.pending()
+    assert not any("dropping it from the queue" in x for x in s.log())
 
 
 def test_rar_release_counts_as_in_library_through_import_history(lab: Lab, start: StartFn, golden) -> None:
@@ -209,6 +226,23 @@ def test_low_disk_space_deletes_early(lab: Lab, start: StartFn, golden) -> None:
     wait_for(lambda: "Torrent cleaned up early" in lab.ntfy.titles(), what="the notification")
     assert s.post("/api/low-space", {"enabled": True, "min_free_gb": "lots"}).status_code == 400
     golden("log", [x for x in s.log() if "GB free" not in x])
+
+
+def test_low_disk_space_keeps_titles_marked_never_delete(lab: Lab, start: StartFn) -> None:
+    keep = lab.add_movie("Charge", 2022, ratio=0.1, seeding_days=1)
+    go = lab.add_movie("Spring", 2019, ratio=0.1, seeding_days=1)
+    s = start(
+        rule_list=[{"type": "title", "match": "charge", "mode": "never", "min_seed_days": None, "min_ratio": None}]
+    )
+    for m in (keep, go):
+        lab.delete_movie_files(m)
+        s.webhook(lab.movie_event(m))
+    assert keep.torrent and go.torrent
+    s.wait_status(keep.torrent.hash, "^seeding")
+    assert s.post("/api/low-space", {"enabled": True, "min_free_gb": 10**9}).status_code == 200
+    s.wait_log(f"deleting '{go.torrent.name}' early")  # oldest first: without the title rule, Charge would go first
+    assert keep.torrent.hash in lab.torrents
+    assert [r["name"] for r in s.api("/api/history")["rows"]] == [go.torrent.name]
 
 
 def test_path_mappings(lab: Lab, start: StartFn) -> None:

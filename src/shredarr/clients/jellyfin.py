@@ -20,7 +20,9 @@ class JellyfinClient(JsonApi):
     app = "Jellyfin"
 
     def __init__(self, url: str, api_key: str) -> None:
-        super().__init__(url, {"X-Emby-Token": api_key})
+        # The Authorization header works on every Jellyfin version; 12 and later reject the old X-Emby-Token header
+        # unless legacy authorization is switched on.
+        super().__init__(url, {"Authorization": f'MediaBrowser Token="{api_key}"'})
 
     def system_info(self) -> JSON:
         return dict(self.get("/System/Info"))

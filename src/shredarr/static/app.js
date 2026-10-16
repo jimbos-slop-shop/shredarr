@@ -68,21 +68,15 @@ function toast(msg, err) {
   toastTimer = setTimeout(() => (t.className = err ? "err" : ""), 3000);
 }
 
-async function postJSON(url, obj) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "X-Fetch": "1", "Content-Type": "application/json" },
-    body: JSON.stringify(obj),
-  });
-  const t = await r.text();
-  if (!r.ok) throw new Error(t || r.status);
-  return t;
+// A failed request throws with the server's own message (or the status code if it sent none).
+async function orThrow(r) {
+  if (!r.ok) throw new Error((await r.text()) || r.status);
+  return r;
 }
-const post = (url, body, type) =>
-  fetch(url, { method: "POST", headers: { "X-Fetch": "1", ...(type ? { "Content-Type": type } : {}) }, body }).then((r) => {
-    if (!r.ok) throw new Error(r.status);
-    return r;
-  });
+const getJSON = async (url) => (await orThrow(await fetch(url))).json();
+const post = async (url, body, type) =>
+  orThrow(await fetch(url, { method: "POST", headers: { "X-Fetch": "1", ...(type ? { "Content-Type": type } : {}) }, body }));
+const postJSON = async (url, obj) => (await post(url, JSON.stringify(obj), "application/json")).text();
 
 // ------------------------------------------------------------------ theme (auto / light / dark)
 const THEMES = ["auto", "light", "dark"];
@@ -215,8 +209,8 @@ function render() {
   const cats = [...new Set(data.torrents.map((t) => t.category))].sort();
   if ($("cat").options.length - 1 !== cats.length) {
     const v = $("cat").value;
-    $("cat").innerHTML =
-      '<option value="">All categories</option>' + cats.map((c) => `<option value="${c}">${catOf(c)[2]}</option>`).join("");
+    // categories come from the torrent client, so they're set as text, never as HTML
+    $("cat").replaceChildren(new Option("All categories", ""), ...cats.map((c) => new Option(catOf(c)[2], c)));
     $("cat").value = v;
   }
   const tb = $("rows");
@@ -368,9 +362,7 @@ function renderSetup() {
 
 async function load() {
   try {
-    const r = await fetch("/api/torrents");
-    if (!r.ok) throw new Error(await r.text());
-    data = await r.json();
+    data = await getJSON("/api/torrents");
     render();
     updState("upd", "Live · updated " + clock());
   } catch (e) {
@@ -641,9 +633,7 @@ async function askDelete(hashes) {
   list.innerHTML = '<li class="m">Working out what will be removed…</li>';
   $("del").showModal();
   try {
-    const r = await fetch("/api/plan?hash=" + hashes[0]);
-    if (!r.ok) throw new Error(await r.text());
-    const p = await r.json();
+    const p = await getJSON("/api/plan?hash=" + hashes[0]);
     stepList(p.steps, p.notes);
     if (!p.steps.length) list.innerHTML = '<li class="m">Nothing to delete.</li>';
     else $("delgo").disabled = false;
@@ -703,9 +693,7 @@ async function askUndo(hashes) {
   list.innerHTML = '<li class="m">Checking what can be restored…</li>';
   $("und").showModal();
   try {
-    const r = await fetch("/api/undo-plan?hash=" + hashes[0]);
-    if (!r.ok) throw new Error(await r.text());
-    const p = await r.json();
+    const p = await getJSON("/api/undo-plan?hash=" + hashes[0]);
     list.textContent = "";
     if (p.problem) {
       const li = document.createElement("li");
@@ -771,9 +759,7 @@ const orphShown = () =>
 async function loadOrphans(force) {
   if (force) setText($("nsum"), "Checking your library…");
   try {
-    const r = await fetch("/api/orphans" + (force ? "?refresh=1" : ""));
-    if (!r.ok) throw new Error(await r.text());
-    orphans = (await r.json()).items;
+    orphans = (await getJSON("/api/orphans" + (force ? "?refresh=1" : ""))).items;
     renderOrphans();
   } catch (e) {
     setText($("nsum"), "Couldn't check the library: " + e.message);
@@ -862,9 +848,7 @@ async function askDeleteOrphans(ids) {
   list.innerHTML = '<li class="m">Working out what will be removed…</li>';
   $("del").showModal();
   try {
-    const r = await fetch("/api/orphan-plan?ids=" + encodeURIComponent(ids.join(",")));
-    if (!r.ok) throw new Error(await r.text());
-    const p = await r.json();
+    const p = await getJSON("/api/orphan-plan?ids=" + encodeURIComponent(ids.join(",")));
     stepList(p.steps);
     if (!p.steps.length)
       list.innerHTML = '<li class="m">Nothing to delete: these have a torrent again, or are already gone.</li>';
@@ -935,9 +919,7 @@ function renderLog() {
 }
 async function loadLog() {
   try {
-    const r = await fetch("/api/log");
-    if (!r.ok) throw new Error(r.status);
-    const entries = await r.json();
+    const entries = await getJSON("/api/log");
     const sig = entries.length + ":" + (entries[0] || [0])[0];
     if (sig !== logSig) {
       logSig = sig;
@@ -959,9 +941,7 @@ async function loadLog() {
 let histSig = "";
 async function loadHistory() {
   try {
-    const r = await fetch("/api/history?q=" + encodeURIComponent($("hq").value));
-    if (!r.ok) throw new Error(r.status);
-    const h = await r.json();
+    const h = await getJSON("/api/history?q=" + encodeURIComponent($("hq").value));
     const sig = JSON.stringify(h).length + ":" + h.rows.length + $("hq").value;
     setText($("hsum"), `${h.rows.length} cleaned up · ${size(h.total)} freed`);
     $("hempty").hidden = h.rows.length > 0;
@@ -1013,8 +993,7 @@ async function askRedownload(x) {
   list.innerHTML = '<li class="m">Working out what this was…</li>';
   $("rdl").showModal();
   try {
-    const r = await fetch("/api/redownload-plan?id=" + x.id);
-    const p = await r.json();
+    const p = await getJSON("/api/redownload-plan?id=" + x.id);
     if (p.problem) {
       list.textContent = "";
       const li = document.createElement("li");
@@ -1242,8 +1221,7 @@ function fillList(id, items) {
 
 async function loadSettings() {
   try {
-    const r = await fetch("/api/settings");
-    settings = await r.json();
+    settings = await getJSON("/api/settings");
     renderConnections();
     $("rlist").replaceChildren(...settings.rule_list.map(ruleRow));
     fillList("dl-category", settings.choices.categories);
@@ -1264,14 +1242,16 @@ async function loadSettings() {
     fill($("polform"), settings.policy);
     $("uform").elements.enabled.checked = settings.update_check;
     const u = settings.update || {};
-    $("about-ver").innerHTML =
-      `Version <b>${settings.version}</b>` +
-      (u.newer
-        ? ` · <a href="${u.url}" target="_blank" rel="noopener">v${u.latest} is available</a>`
-        : u.latest
-          ? " · up to date"
-          : "") +
-      ` · <a href="https://github.com/${settings.repo}" target="_blank" rel="noopener">GitHub</a>`;
+    // the update link comes from GitHub's answer, so the line is built from elements rather than an HTML string
+    const link = (href, label) =>
+      Object.assign(document.createElement("a"), { href, textContent: label, target: "_blank", rel: "noopener" });
+    $("about-ver").replaceChildren(
+      "Version ",
+      Object.assign(document.createElement("b"), { textContent: settings.version }),
+      ...(u.newer ? [" · ", link(u.url, `v${u.latest} is available`)] : u.latest ? [" · up to date"] : []),
+      " · ",
+      link(`https://github.com/${settings.repo}`, "GitHub"),
+    );
     $("pol-text").textContent = polText(settings.policy);
     $("rchecks").hidden = true;
     if (settings.missing.length) toast("Connect " + settings.missing.map((k) => NAMES[k]).join(", ") + " to get started");
@@ -1460,7 +1440,7 @@ function tHelp() {
     (forever ? "They're never removed." : `Files older than ${v} ${v === 1 ? f.unit.value.slice(0, -1) : f.unit.value} are removed automatically.`);
 }
 async function refreshSaved() {
-  settings.saved_torrents = (await (await fetch("/api/settings")).json()).saved_torrents;
+  settings.saved_torrents = (await getJSON("/api/settings")).saved_torrents;
   tHelp();
 }
 $("tform").oninput = tHelp;
@@ -1497,8 +1477,7 @@ $("tdel").onclick = async () => {
 $("rcheck").onclick = async () => {
   const b = $("rcheck");
   b.disabled = true;
-  const r = await fetch("/api/restore-check", { method: "POST", headers: { "X-Fetch": "1" } });
-  const d = await r.json(),
+  const d = await (await post("/api/restore-check")).json(),
     ul = $("rchecks");
   ul.textContent = "";
   d.messages.forEach((m, i) => {

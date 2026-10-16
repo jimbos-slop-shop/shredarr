@@ -4,10 +4,11 @@ import pytest
 
 from shredarr.clients.torrents import Torrent
 from shredarr.config import Config, api_url, base_url
-from shredarr.files import PathMapper, first_rar_volumes
-from shredarr.services.rules import evaluate, rule_for
+from shredarr.files import PathMapper
+from shredarr.services.media_files import first_rar_volumes
+from shredarr.services.rules import evaluate, rule_for, rule_text
 from shredarr.services.trackers import site_of
-from shredarr.text import duration, episodes_label, human, rule_text, tail
+from shredarr.text import duration, episodes_label, human, tail
 
 DAY = 86400
 
