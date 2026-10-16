@@ -278,3 +278,12 @@ def test_faked_forwarded_addresses_still_hit_a_limit(core: Shredarr) -> None:
         core.auth.login_failed(f"10.1.0.{i}", lan)  # a new made-up address every time
     assert core.auth.login_blocked("10.2.0.1", lan)  # 50 on one connection
     assert not core.auth.login_blocked("10.2.0.1", "192.168.1.51")
+
+
+def test_config_saves_where_chmod_is_refused(core: Shredarr, monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*a: Any) -> None:
+        raise PermissionError("not on this share")
+
+    monkeypatch.setattr(os, "fchmod", refuse)
+    core.config.save({"dry_run": True})
+    assert core.config.load().dry_run
