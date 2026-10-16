@@ -4,6 +4,25 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
+Review fixes from [#7](https://github.com/jschaef80/shredarr/pull/7).
+
+### Fixed
+
+- The cleanup sweep no longer fails when Sonarr or Radarr is down during the low disk space pass. Torrents it can't check wait for the next pass.
+- A delete that worked is no longer logged as failed when the app answers with an empty JSON reply.
+- Plex calls no longer fail at random when two things use the Plex connection at the same time.
+- Settings save on shares that don't allow changing file permissions.
+- Saved `.torrent` files cut off mid-write are removed after an hour, and Delete all removes them too.
+
+### Security
+
+- Wrong passwords also count per connection (50 in 15 minutes), so a device on your network can't dodge the limit by making up `X-Forwarded-For` addresses.
+
+### Changed
+
+- The "files vanished" notification for Plex is sent once per outage instead of every time the count of missing files changes.
+- Code tidy-ups with no change in behavior.
+
 ## [2.3.0] - 2026-10-16
 
 Bug fixes, structure, performance and security work ([#6](https://github.com/jschaef80/shredarr/pull/6)), including:
