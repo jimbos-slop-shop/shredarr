@@ -134,7 +134,7 @@ class FakeQBittorrent(TorrentFake):
 
     def delete(self, r: Request) -> None:
         f = r.form()
-        self.remove(f["hashes"].split("|"), f.get("deleteFiles") == "true")
+        self.remove(f["hashes"].split("|"), f.get("deleteFiles", "").lower() == "true")  # qBittorrent ignores case here
 
     def add(self, r: Request) -> str:
         cat = re.search(rb'name="category"\r\n\r\n(.*?)\r\n', r.body)

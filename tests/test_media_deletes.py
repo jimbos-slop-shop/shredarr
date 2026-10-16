@@ -25,8 +25,8 @@ def test_movie_delete_cleans_up_everywhere_then_the_torrent(lab: Lab, start: Sta
         (f"/api/v3/movie/{movie_id}", {"deleteFiles": "true", "addImportExclusion": "true"})]
     assert [e["tmdbId"] for e in lab.radarr.exclusions] == [m.tmdb]
     assert len(lab.seerr.requests("DELETE")) == 1
-    assert lab.qbittorrent.requests("POST", "/api/v2/torrents/delete")[-1].form() == {
-        "hashes": m.torrent.hash, "deleteFiles": "true"}
+    form = lab.qbittorrent.requests("POST", "/api/v2/torrents/delete")[-1].form()
+    assert form["hashes"] == m.torrent.hash and form["deleteFiles"].lower() == "true"
     assert "Torrent cleaned up" in lab.ntfy.titles()
     assert "Deleted in Jellyfin" in lab.ntfy.titles()
 

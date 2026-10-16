@@ -90,7 +90,6 @@
   },
   "rule_list": [],
   "unar": false,
-  "update": {},
   "update_check": true,
   "version": "<VERSION>",
   "webhook_url_guess": "http://127.0.0.1:8089"

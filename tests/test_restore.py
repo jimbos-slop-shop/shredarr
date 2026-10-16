@@ -135,7 +135,7 @@ def test_redownload_by_search(lab: Lab, start: StartFn, golden) -> None:
     cmds = sorted((c["name"], c["body"].get("seasonNumber"), len(c["body"].get("episodeIds") or [])) for x in (lab.radarr, lab.sonarr)
                   for c in x.commands.values())
     assert cmds == [("EpisodeSearch", None, 1), ("MoviesSearch", None, 0), ("SeasonSearch", 1, 0)]
-    golden("log", s.log())
+    golden("log", sorted(s.log()[:12]) + s.log()[12:])  # the first two cleanups happen in the same sweep, in any order
 
 
 def test_redownload_of_an_old_entry_is_parsed_from_the_name(lab: Lab, start: StartFn, golden) -> None:

@@ -121,6 +121,7 @@ def test_settings_api_hides_secrets(lab: Lab, start: StartFn, golden) -> None:
     lab.add_radarr_instance()
     lab.add_movie("Sintel", 2010, category="radarr")
     s = start(prowlarr=True, rule_list=[{"type": "category", "match": "radarr", "mode": "never"}])
+    wait_for(lambda: len(s.api("/api/health")) == 7, what="the first health check")
     st = s.api("/api/settings")
     assert "radarr-key" not in str(st) and "adminadmin" not in str(st) and "a1b2c3d4e5" not in str(st)
     st["health"] = {k: {**v, "ts": 0} for k, v in st["health"].items()}
@@ -129,6 +130,8 @@ def test_settings_api_hides_secrets(lab: Lab, start: StartFn, golden) -> None:
 
 def test_save_connections(lab: Lab, start: StartFn, golden) -> None:
     s = start()
+    wait_for(lambda: len(s.api("/api/health")) == 5, what="the first health check")
+    lab.radarr.api_key = "new-key"  # so the health check after saving stays quiet
     r = s.post("/api/connections", {
         "sonarr": {"url": lab.sonarr.url + "/", "api_key": ""},  # blank key: keep the saved one
         "radarr": {"url": lab.radarr.url + "/api/v3", "api_key": "new-key"},
@@ -158,7 +161,7 @@ def test_save_connections(lab: Lab, start: StartFn, golden) -> None:
     assert s.post("/api/password-policy", {"min_length": "12", "upper": 1, "digit": 0, "symbol": True}).status_code == 200
     assert s.read_config()["auth_policy"] == {"min_length": 12, "upper": True, "digit": False, "symbol": True}
     assert s.post("/api/password-policy", {"min_length": "x"}).status_code == 400
-    golden("log", s.log())
+    golden("log", [x for x in s.log() if not x.startswith("Connection ")])  # health checks run in the background
 
 
 def test_connection_tests(lab: Lab, start: StartFn, golden) -> None:
@@ -238,6 +241,6 @@ def test_unconfigured(lab: Lab, start: StartFn, golden) -> None:
     st = s.api("/api/settings")
     assert st["missing"] == ["sonarr", "radarr", "qbittorrent", "jellyfin"]
     assert len(s.read_config()["webhook_token"]) == 64
-    golden("settings", {k: v for k, v in st.items() if k != "health"})
+    golden("settings", {k: v for k, v in st.items() if k not in ("health", "update")})  # (no config: the update check is on)
     time.sleep(0.5)
     assert s.log() == ["Shredarr started"]

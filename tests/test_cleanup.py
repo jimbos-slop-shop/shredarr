@@ -148,7 +148,7 @@ def test_cross_seed_sharing_files_waits_for_its_own_rule(lab: Lab, start: StartF
     s.wait_log(f"^deleted torrent '{m.torrent.name}'")
     s.wait_status(cs.hash, "^seeding")
     assert s.pending()[cs.hash]["source"] == "cross-seed"
-    assert lab.qbittorrent.requests("POST", "/api/v2/torrents/delete")[-1].form()["deleteFiles"] == "true"
+    assert lab.qbittorrent.requests("POST", "/api/v2/torrents/delete")[-1].form()["deleteFiles"].lower() == "true"
     assert os.path.exists(cs.disk_path), "hardlinks of the cross-seed survive"
     golden("log", s.log())
 
@@ -168,7 +168,9 @@ def test_cross_seed_together_with_the_original_keeps_shared_data_until_the_last(
                   [{**r, "tracker_original": r["cross_seed_of"] or ""} for r in history]) == [
         (m.torrent.name, ""), (cs.name, m.torrent.name)]
     golden("log", s.log())
-    golden("history", [{k: r[k] for k in ("name", "title", "reason", "size", "cross_seed_of", "saved_torrent")} for r in history])
+    assert sum(r["size"] for r in history) == 3010, "the shared data is counted once"
+    golden("history", sorted(([{k: r[k] for k in ("name", "title", "reason", "cross_seed_of", "saved_torrent")} for r in history]),
+                             key=lambda r: r["cross_seed_of"] or ""))
 
 
 def test_low_disk_space_deletes_early(lab: Lab, start: StartFn, golden) -> None:
