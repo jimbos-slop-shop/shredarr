@@ -15,18 +15,7 @@ GOLDEN = os.path.join(os.path.dirname(__file__), "golden")
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption(
-        "--impl",
-        default=os.environ.get("SHREDARR_IMPL", "package"),
-        choices=("package", "legacy"),
-        help="which Shredarr to test: the package (src/shredarr) or the legacy single file",
-    )
     parser.addoption("--update-goldens", action="store_true", help="rewrite tests/golden from this run")
-
-
-@pytest.fixture
-def impl(request: pytest.FixtureRequest) -> str:
-    return str(request.config.getoption("--impl"))
 
 
 @pytest.fixture
@@ -40,7 +29,7 @@ StartFn = Callable[..., Shredarr]
 
 
 @pytest.fixture
-def start(impl: str, lab: Lab, tmp_path: Any) -> Iterator[StartFn]:
+def start(lab: Lab, tmp_path: Any) -> Iterator[StartFn]:
     """start(**config overrides) -> a running Shredarr using the lab's apps. start(config=None) starts unconfigured."""
     running: list[Shredarr] = []
 
@@ -48,7 +37,7 @@ def start(impl: str, lab: Lab, tmp_path: Any) -> Iterator[StartFn]:
         config: dict[str, Any] | bool | None = True, env: dict[str, str] | None = None, **overrides: Any
     ) -> Shredarr:
         conf = lab.config(**overrides) if config is True else config or None
-        s = Shredarr(impl, str(tmp_path / f"shredarr{len(running)}"), conf, env)
+        s = Shredarr(str(tmp_path / f"shredarr{len(running)}"), conf, env)
         running.append(s)
         s.start()
         if conf and conf.get("webhook_token") and lab.jellyfin.webhook_target is None:
@@ -112,7 +101,7 @@ def golden(request: pytest.FixtureRequest, lab: Lab) -> Callable[[str, Any], Non
                 f.write("\n")
             return
         if not os.path.exists(path):
-            pytest.fail(f"no golden file {os.path.relpath(path)}; run with --update-goldens (against --impl legacy)")
+            pytest.fail(f"no golden file {os.path.relpath(path)}; run with --update-goldens and review the result")
         with open(path) as f:
             assert data == json.load(f), f"differs from {os.path.relpath(path)}"
 

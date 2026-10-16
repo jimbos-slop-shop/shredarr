@@ -1,7 +1,7 @@
 """Runs Shredarr as a real process against the lab and talks to it over HTTP, the way a browser and Jellyfin do.
 
-Tests only use Shredarr's public surface (web API, webhook, config file, database, CLI), so the same tests check any
-implementation: the legacy single file (tests/legacy) or the package (src/shredarr).
+Tests only use Shredarr's public surface (web API, webhook, config file, database, CLI), so they describe what Shredarr
+does, not how. (They were first run against Shredarr 1.2.1, and the expected output in tests/golden comes from it.)
 """
 
 from __future__ import annotations
@@ -55,17 +55,11 @@ def wait_for[T](fn: Callable[[], T], timeout: float = 15, every: float = 0.1, wh
     raise AssertionError(f"timed out waiting for {what} (last: {last!r})")
 
 
-def command(impl: str) -> list[str]:
-    if impl == "legacy":
-        return [sys.executable, os.path.join(ROOT, "tests", "legacy", "run_legacy.py")]
-    return [sys.executable, "-m", "shredarr"]
+COMMAND = [sys.executable, "-m", "shredarr"]
 
 
 class Shredarr:
-    def __init__(
-        self, impl: str, workdir: str, config: dict[str, Any] | None, env: dict[str, str] | None = None
-    ) -> None:
-        self.impl = impl
+    def __init__(self, workdir: str, config: dict[str, Any] | None, env: dict[str, str] | None = None) -> None:
         self.config_dir = os.path.join(workdir, "config")
         os.makedirs(self.config_dir, exist_ok=True)
         self.config_path = os.path.join(self.config_dir, "config.json")
@@ -92,7 +86,7 @@ class Shredarr:
     # ------------------------------------------------------------------ process
     def start(self) -> Shredarr:
         out = open(self.output_path, "ab")  # noqa: SIM115 (closed with the process)
-        self.proc = subprocess.Popen(command(self.impl), env=self.env, stdout=out, stderr=subprocess.STDOUT, cwd=ROOT)
+        self.proc = subprocess.Popen(COMMAND, env=self.env, stdout=out, stderr=subprocess.STDOUT, cwd=ROOT)
         end = time.time() + 30
         while time.time() < end:
             if self.proc.poll() is not None:
@@ -124,7 +118,7 @@ class Shredarr:
 
     def cli(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [*command(self.impl), *args],
+            [*COMMAND, *args],
             env=self.env,
             capture_output=True,
             text=True,

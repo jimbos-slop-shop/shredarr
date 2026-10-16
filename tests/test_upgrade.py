@@ -16,14 +16,14 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 LAN = lan_ip()
 
 
-def test_state_from_1_2_1(lab: Lab, impl: str, tmp_path, golden) -> None:
+def test_state_from_1_2_1(lab: Lab, tmp_path, golden) -> None:
     """state.db made by Shredarr 1.2.1 (tests/fixtures), with its password and session."""
     with open(os.path.join(FIXTURES, "state-1.2.1.json")) as f:
         old = json.load(f)
     waiting = lab.add_movie("Sintel", 2010, ratio=0.1, seeding_days=1)  # the torrent still waiting in that state.db
     assert waiting.torrent and waiting.torrent.hash == old["waiting"]
     lab.delete_movie_files(waiting)
-    s = Shredarr(impl, str(tmp_path / "s"), {**lab.config(), "auth": old["auth"]})
+    s = Shredarr(str(tmp_path / "s"), {**lab.config(), "auth": old["auth"]})
     shutil.copy(os.path.join(FIXTURES, "state-1.2.1.db"), s.db_path)
     s.start()
     try:
@@ -45,7 +45,7 @@ def test_state_from_1_2_1(lab: Lab, impl: str, tmp_path, golden) -> None:
 
 def test_oldest_database(lab: Lab, tmp_path) -> None:
     """A database from before per-torrent rules got their own table (they were columns of the queue)."""
-    s = Shredarr("package", str(tmp_path / "s"), lab.config())
+    s = Shredarr(str(tmp_path / "s"), lab.config())
     con = sqlite3.connect(s.db_path)
     con.execute(
         "create table pending (hash text primary key, name text, source text, added_at real, status text, "
