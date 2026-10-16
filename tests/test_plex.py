@@ -22,7 +22,7 @@ def test_movie_deleted_on_disk(lab: Lab, start: StartFn, golden) -> None:
     lab.delete_movie_files(m)
     s.wait_log("^deleted torrent")
     assert len(lab.radarr.requests("DELETE")) == 1 and len(lab.seerr.requests("DELETE")) == 1
-    assert "Deleted in Plex" in lab.ntfy.titles()
+    wait_for(lambda: "Deleted in Plex" in lab.ntfy.titles(), what="the notification")
     golden("log", s.log())
 
 

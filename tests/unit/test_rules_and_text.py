@@ -131,6 +131,17 @@ def test_config_defaults_and_old_settings() -> None:
     assert Config({}).default_rule == {"mode": "either", "min_seed_days": 14, "min_ratio": 2}
 
 
+def test_torrent_retention() -> None:
+    assert Config({}).torrent_retention == {"value": 1, "unit": "years"}
+    assert Config({}).torrent_retention_seconds == 365 * DAY
+    assert Config({"torrent_retention": {"value": 2, "unit": "months"}}).torrent_retention_seconds == 60 * DAY
+    assert Config({"torrent_retention": {"value": 1, "unit": "forever"}}).torrent_retention_seconds is None
+    assert Config({"torrent_retention": {"value": 3, "unit": "fortnights"}}).torrent_retention == {
+        "value": 1,
+        "unit": "years",
+    }
+
+
 def test_files() -> None:
     assert first_rar_volumes(["a.rar", "a.r00", "b.part1.rar", "b.part2.rar", "b.part10.rar", "c.part01.rar"]) == [
         "a.rar",

@@ -1257,6 +1257,9 @@ async function loadSettings() {
     $("free-now").textContent =
       settings.free_gb != null ? `The downloads disk has ${settings.free_gb.toFixed(0)} GB free right now.` : "";
     fill($("rform"), settings.restore);
+    fill($("tform"), settings.torrent_retention);
+    $("tform").elements.enabled.checked = settings.save_torrents;
+    tHelp();
     fill($("polform"), settings.policy);
     $("uform").elements.enabled.checked = settings.update_check;
     const u = settings.update || {};
@@ -1439,6 +1442,55 @@ $("gform").onsubmit = async (e) => {
     toast("Deletion delay saved");
   } catch (err) {
     toast(err.message, true);
+  }
+};
+function tHelp() {
+  const f = $("tform").elements,
+    forever = f.unit.value === "forever",
+    v = +f.value.value || 0,
+    s = settings.saved_torrents || { count: 0, bytes: 0 };
+  f.value.hidden = forever;
+  $("tdel").disabled = !s.count;
+  $("t-on-help").textContent = f.enabled.checked
+    ? "Each torrent Shredarr deletes for good keeps a copy of its .torrent file here."
+    : "Off: torrents deleted from now on can only be redownloaded by searching. Files already saved stay until they expire or you delete them.";
+  $("t-help").textContent =
+    (s.count ? `Shredarr has ${s.count} saved .torrent file${s.count === 1 ? "" : "s"} (${size(s.bytes)}). ` : "No saved .torrent files yet. ") +
+    (forever ? "They're never removed." : `Files older than ${v} ${v === 1 ? f.unit.value.slice(0, -1) : f.unit.value} are removed automatically.`);
+}
+async function refreshSaved() {
+  settings.saved_torrents = (await (await fetch("/api/settings")).json()).saved_torrents;
+  tHelp();
+}
+$("tform").oninput = tHelp;
+$("tform").elements.enabled.onchange = async (e) => {
+  try {
+    await postJSON("/api/save-torrents", { enabled: e.target.checked });
+    toast(e.target.checked ? "Saving .torrent files turned on" : "Saving .torrent files turned off");
+  } catch (err) {
+    e.target.checked = !e.target.checked;
+    tHelp();
+    toast(err.message, true);
+  }
+};
+$("tform").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await postJSON("/api/torrent-retention", formObj($("tform")));
+    toast("Saved .torrent files setting saved");
+    await refreshSaved();
+  } catch (err) {
+    toast(err.message, true);
+  }
+};
+$("tdel").onclick = async () => {
+  const n = (settings.saved_torrents || {}).count || 0;
+  if (!confirm(`Delete all ${n} saved .torrent file${n === 1 ? "" : "s"}? The same releases can then no longer be redownloaded from History; Redownload can only search for a new release.`)) return;
+  try {
+    toast(await (await post("/api/saved-torrents/delete")).text());
+    await refreshSaved();
+  } catch (err) {
+    toast("Delete failed: " + err.message, true);
   }
 };
 $("rcheck").onclick = async () => {

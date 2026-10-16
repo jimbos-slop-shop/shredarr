@@ -33,8 +33,8 @@ your seeding rule is met, then removes the torrent and its download, with an **U
   old settings and re-imports the file. RAR releases are unpacked again with the built-in unpacker.
 - **Redownload.** Already gone for good? Every cleanup in History has a **Redownload** button: Shredarr puts the
   movie or episodes back in Sonarr/Radarr (with their old settings), then either re-adds the **same release** (it
-  keeps a copy of each `.torrent`) or lets Sonarr/Radarr **search again**. Season packs and complete series come
-  back as packs.
+  keeps a copy of each `.torrent`, for a year by default) or lets Sonarr/Radarr **search again**. Season packs and
+  complete series come back as packs.
 - **Deletion delay.** Optionally wait hours or days before removing a torrent, so there is always time to Undo.
 - **Delete now.** Remove a torrent and its media everywhere immediately, with a preview of every step. If
   Sonarr/Radarr has since upgraded a movie or episode to a file from a different download, that one is left alone.
@@ -142,6 +142,7 @@ them (qBittorrent also gets *same release*).
 | Deletion delay | Minimum wait before a torrent is removed (time to Undo) |
 | Low disk space | Delete waiting torrents early when free space runs low |
 | RAR restore | Unpack RAR releases again for Undo |
+| Saved .torrent files | Keep copies of deleted torrents for Redownload (on by default), for how long (1 year by default), and delete them all |
 | Password | Change it, set password rules, sign out everywhere |
 
 ## Security notes

@@ -20,6 +20,7 @@ from .connections import Connections
 from .library import Library
 from .notifications import Notifier
 from .rules import evaluate, rule_for
+from .saved_torrents import SavedTorrents
 from .snapshots import movie_settings, season_monitoring, series_settings
 from .trackers import Trackers, tracker_host
 
@@ -60,7 +61,7 @@ class Cleaner:
         redownloads: RedownloadsRepo,
         activity: Activity,
         notifier: Notifier,
-        torrent_dir: str,
+        saved: SavedTorrents,
     ) -> None:
         self.config = config
         self.connections = connections
@@ -72,7 +73,7 @@ class Cleaner:
         self.redownloads = redownloads
         self.activity = activity
         self.notifier = notifier
-        self.torrent_dir = torrent_dir
+        self.saved = saved
         self.after_sweep: list[Callable[[], None]] = []  # e.g. checking on redownloads
         self._lock = threading.Lock()
 
@@ -289,7 +290,7 @@ class Cleaner:
 
     def capture_restore(self, t: Torrent) -> JSON:
         """Right before a torrent is deleted for good: what it was (movie / show + episodes, with Sonarr/Radarr
-        settings) and a copy of its .torrent file, so it can be downloaded again later from History."""
+        settings) and a copy of its .torrent file (unless switched off), so it can be downloaded again from History."""
         h = t["hash"]
         row = self.pending.get(h)
         snap = (row.undo if row else None) or {}
@@ -323,12 +324,12 @@ class Cleaner:
                     out["series"] = {**series_settings(sr), "seasons": season_monitoring(sr)}
         except Exception as e:  # best effort, as above
             log.warning("capture_restore: %s", e)
+        if not self.saved.enabled:  # switched off in Settings: Redownload can only search again
+            return out
         try:
             data = self.connections.torrents.export(h)
             if data:
-                os.makedirs(self.torrent_dir, exist_ok=True)
-                with open(os.path.join(self.torrent_dir, h + ".torrent"), "wb") as f:
-                    f.write(data)
+                self.saved.save(h, data)
         except Exception as e:  # best effort, as above
             log.warning("torrent export: %s", e)
         return out

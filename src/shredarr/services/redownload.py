@@ -19,6 +19,7 @@ from .library import Library
 from .media_server import media_server
 from .notifications import Notifier
 from .restore import Restorer, wait_for
+from .saved_torrents import SavedTorrents
 
 NUDGE_AFTER = 600  # seconds a finished re-added torrent may take to be imported before Shredarr helps
 NUDGE_TRIES = 3
@@ -35,7 +36,7 @@ class Redownloader:
         redownloads: RedownloadsRepo,
         activity: Activity,
         notifier: Notifier,
-        torrent_dir: str,
+        saved: SavedTorrents,
     ) -> None:
         self.config = config
         self.connections = connections
@@ -45,11 +46,7 @@ class Redownloader:
         self.redownloads = redownloads
         self.activity = activity
         self.notifier = notifier
-        self.torrent_dir = torrent_dir
-
-    def saved_torrent(self, h: str | None) -> str | None:
-        p = os.path.join(self.torrent_dir, (h or "") + ".torrent")
-        return p if h and os.path.isfile(p) else None
+        self.saved = saved
 
     def resolve(self, row_id: int) -> JSON:
         """What a History entry was, as {app, movie, series, episodes, name, category, hash}. Entries saved before
@@ -153,7 +150,7 @@ class Redownloader:
         return {
             "what": what,
             "app": info["app"],
-            "same_available": bool(self.saved_torrent(info.get("hash"))),
+            "same_available": self.saved.has(info.get("hash")),
             "steps": {
                 "same": [
                     first,
@@ -188,9 +185,7 @@ class Redownloader:
                 assert isinstance(arr, SonarrClient)
                 series_id, episode_ids, whole, full_series = self.monitor_episodes(arr, info)
             if how == "same":
-                path = self.saved_torrent(info.get("hash")) or os.path.join(
-                    self.torrent_dir, (info.get("hash") or "") + ".torrent"
-                )
+                path = self.saved.path(info.get("hash"))
                 with open(path, "rb") as f:
                     content = f.read()
                 self.connections.torrents.add(content, os.path.basename(path), info.get("category") or "")

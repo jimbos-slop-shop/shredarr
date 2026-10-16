@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from shredarr import __version__
 from tests.fakes.lab import Lab
 from tests.harness import Shredarr
 
@@ -52,7 +53,7 @@ def start(lab: Lab, tmp_path: Any) -> Iterator[StartFn]:
 # ---------------------------------------------------------------------- golden files
 
 TIME_KEYS = {"added_on", "ts", "delete_after", "redownloaded", "expires", "created"}
-SHREDARR_VERSIONS = {"1.2.1", "2.0.0"}
+SHREDARR_VERSIONS = {"1.2.1", __version__}  # (the expected output was first recorded from 1.2.1)
 
 
 def placeholder(key: str, value: Any) -> Any:

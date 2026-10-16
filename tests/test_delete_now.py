@@ -29,9 +29,9 @@ def test_delete_now_movie(lab: Lab, start: StartFn, golden) -> None:
     assert lab.radarr.requests("DELETE")[0].path == f"/api/v3/movie/{movie_id}"
     assert len(lab.seerr.requests("DELETE")) == 1
     assert not os.path.exists(m.folder) and not os.path.exists(m.torrent.disk_path)
-    rows = s.api("/api/history")["rows"]
+    rows = wait_for(lambda: s.api("/api/history")["rows"], what="the History entry")  # written after the last step
     assert [(r["name"], r["reason"], r["size"]) for r in rows] == [(m.torrent.name, "Delete now", 3010)]
-    assert "Deleted now" in lab.ntfy.titles()
+    wait_for(lambda: "Deleted now" in lab.ntfy.titles(), what="the notification")
     # Jellyfin then reports the delete Shredarr made itself: that webhook is ignored
     time.sleep(1.5)
     assert not any(x.startswith("Jellyfin deleted") for x in s.log())
@@ -66,7 +66,7 @@ def test_delete_now_cross_seed_group_and_jellyfin_elsewhere(lab: Lab, start: Sta
     s.wait_log("^  done: Delete cross-seed torrent")
     assert not lab.torrents
     assert len(lab.jellyfin.requests("DELETE")) == 1
-    rows = s.api("/api/history")["rows"]
+    rows = wait_for(lambda: len(r := s.api("/api/history")["rows"]) == 2 and r, what="both History entries")
     assert sorted(r["cross_seed_of"] or "" for r in rows) == ["", m.torrent.name]
     golden("log", s.log())
 
@@ -113,7 +113,7 @@ def test_no_torrent_tab(lab: Lab, start: StartFn, golden) -> None:
     golden("plan", s.api("/api/orphan-plan", ids=",".join(ids)))
     assert s.post("/api/orphans/delete", {"ids": ids}).status_code == 202
     s.wait_log("^  done: Unmonitor")
-    wait_for(lambda: s.api("/api/history")["rows"], what="history rows")
+    wait_for(lambda: len(s.api("/api/history")["rows"]) == 2, what="both History entries")
     assert not os.path.exists(lone.file)
     assert not any(os.path.exists(show.episode_file(1, n)) for n in (1, 2, 3))
     assert os.path.exists(show.episode_file(2, 1))
