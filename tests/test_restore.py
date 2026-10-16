@@ -118,7 +118,7 @@ def test_redownload_same_release(lab: Lab, start: StartFn, golden) -> None:
     assert lab.radarr.movies and next(iter(lab.radarr.movies.values()))["monitored"] is True
     s.sweep()
     s.wait_log("^Redownload finished")
-    row = s.api("/api/history")["rows"][0]
+    row = wait_for(lambda: (r := s.api("/api/history")["rows"][0])["redownload_how"] and r, what="History marked")
     assert row["redownload_how"] == "same" and row["redownloaded"]
     golden("log", s.log())
 

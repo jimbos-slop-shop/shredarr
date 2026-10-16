@@ -206,7 +206,7 @@ def test_low_disk_space_deletes_early(lab: Lab, start: StartFn, golden) -> None:
     wait_for(lambda: len(s.api("/api/history")["rows"]) == 2, what="both cleaned up")
     assert keep.torrent.hash in lab.torrents
     assert {r["reason"] for r in s.api("/api/history")["rows"]} == {"low disk space"}
-    assert "Torrent cleaned up early" in lab.ntfy.titles()
+    wait_for(lambda: "Torrent cleaned up early" in lab.ntfy.titles(), what="the notification")
     assert s.post("/api/low-space", {"enabled": True, "min_free_gb": "lots"}).status_code == 400
     golden("log", [x for x in s.log() if "GB free" not in x])
 

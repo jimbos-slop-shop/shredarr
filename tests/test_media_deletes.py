@@ -28,8 +28,7 @@ def test_movie_delete_cleans_up_everywhere_then_the_torrent(lab: Lab, start: Sta
     assert len(lab.seerr.requests("DELETE")) == 1
     form = lab.qbittorrent.requests("POST", "/api/v2/torrents/delete")[-1].form()
     assert form["hashes"] == m.torrent.hash and form["deleteFiles"].lower() == "true"
-    assert "Torrent cleaned up" in lab.ntfy.titles()
-    assert "Deleted in Jellyfin" in lab.ntfy.titles()
+    wait_for(lambda: {"Torrent cleaned up", "Deleted in Jellyfin"} <= set(lab.ntfy.titles()), what="both notifications")
 
     history = s.api("/api/history")
     assert [(r["name"], r["title"], r["reason"]) for r in history["rows"]] == [
