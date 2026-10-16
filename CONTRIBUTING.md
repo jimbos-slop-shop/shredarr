@@ -117,7 +117,7 @@ notifications are sent. `tests/test_read_only.py` checks that nothing gets throu
 2. Add the release to `CHANGELOG.md`.
 3. Bump the uv version in `ci.yml` and the Dockerfile's `COPY --from=ghcr.io/astral-sh/uv` line by hand.
 4. Commit, then tag: `git tag v2.1.0 && git push --tags`.
-5. CI tests it, builds the image for amd64 and arm64, and publishes `ghcr.io/jschaef80/shredarr:2.1.0`, `:2.1` and
+5. CI tests it, builds the image for amd64 and arm64, and publishes `ghcr.io/jimbos-slop-shop/shredarr:2.1.0`, `:2.1` and
    `:latest`.
 6. Write the release notes on GitHub.
 

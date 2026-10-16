@@ -14,7 +14,7 @@ class Settings:
     db_path: str = "/config/state.db"
     host: str = "0.0.0.0"
     port: int = 8089
-    repo: str = "jschaef80/shredarr"  # where update checks look for new releases
+    repo: str = "jimbos-slop-shop/shredarr"  # where update checks look for new releases
     watch_interval: float = 60  # Plex library watch: seconds between looks at the library folders
     watch_confirm: float = 100  # seconds a file must stay gone: an upgrade or rename replaces it within seconds
     read_only: bool = False  # a test copy: never change anything in another app, send no notifications

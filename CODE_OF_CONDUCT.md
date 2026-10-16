@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement privately, through
-GitHub's [private vulnerability reporting](https://github.com/jschaef80/shredarr/security/advisories/new)
+GitHub's [private vulnerability reporting](https://github.com/jimbos-slop-shop/shredarr/security/advisories/new)
 or by email to the maintainer.
 All complaints will be reviewed and investigated promptly and fairly.
 
