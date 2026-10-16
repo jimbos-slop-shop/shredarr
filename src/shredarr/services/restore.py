@@ -273,7 +273,7 @@ class Undo:
     def run(self, h: str) -> None:
         try:
             t, rows, problem = self.info(h)
-        except Exception as e:
+        except Exception as e:  # reported below, like any other reason Undo can't run
             t, rows, problem = None, [], repr(e)
         if problem:
             return self.activity.error(f"Undo failed: {problem}")

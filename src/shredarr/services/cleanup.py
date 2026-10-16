@@ -121,7 +121,7 @@ class Cleaner:
             for fn in self.after_sweep:
                 try:
                     fn()
-                except Exception as e:
+                except Exception as e:  # reported; the sweep itself is done
                     self.activity.error(f"redownload check failed: {e}")
 
     def check(

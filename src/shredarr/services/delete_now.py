@@ -161,7 +161,7 @@ class DeleteNow:
         c = self.config.load()
         try:
             plan = self.plan(c, h)
-        except Exception as e:
+        except Exception as e:  # nothing was done yet; reported
             return self.activity.error(f"Delete now failed while planning: {e!r}")
         t = plan.torrent
         self.activity.info(f"Delete now: {t['name'] if t else h}")

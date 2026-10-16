@@ -160,7 +160,7 @@ class Orphans:
         c = self.config.load()
         try:
             steps, done, paths = self.plan(c, ids)
-        except Exception as e:
+        except Exception as e:  # nothing was done yet; reported
             return self.activity.error(f"Deleting media with no torrent failed while planning: {e!r}")
         if not c.dry_run:
             self.suppressions.add_paths(paths)
