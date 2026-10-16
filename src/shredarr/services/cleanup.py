@@ -211,7 +211,9 @@ class Cleaner:
             return
         for p in self.pending.all():
             t = ts.get(p.hash)
-            if not t or t["progress"] < 1 or self.library.in_library(t) or self.rule(t, ov, c)["mode"] == "never":
+            if not t or t["progress"] < 1 or self.library.in_library(t):
+                continue
+            if self.rule(t, ov, c, self.library.title_of(p.hash, p.name))["mode"] == "never":
                 continue
             if p.added_at + c.grace_seconds > time.time():
                 continue
@@ -243,9 +245,14 @@ class Cleaner:
         Returns [(torrent, bytes freed, data kept)]."""
         gone = [(ts[h], self.library.cross_seed_of(h, ts, groups)) for h in batch if h in ts]
         restores = {t["hash"]: ({"cross_seed_of": ts[o]["name"]} if o else self.capture_restore(t)) for t, o in gone}
-        freed, kept = self.remove_torrents([t["hash"] for t, _ in gone], ts)
-        for t, _ in gone:
-            self.record(t, name, reason, restores[t["hash"]], freed.get(t["hash"]))
+        freed: dict[str, int] = {}
+        kept: set[str] = set()
+        try:
+            freed, kept = self.remove_torrents([t["hash"] for t, _ in gone], ts)
+        finally:  # if one of the client calls failed, the torrents that did go still get their History entry
+            for t, _ in gone:
+                if t["hash"] not in ts:
+                    self.record(t, name, reason, restores[t["hash"]], freed.get(t["hash"]))
         return [(t, freed.get(t["hash"], 0), t["hash"] in kept) for t, _ in gone]
 
     def remove_torrents(self, hashes: list[str], ts: Torrents) -> tuple[dict[str, int], set[str]]:
@@ -280,12 +287,11 @@ class Cleaner:
                     seen.add(k)
                     n += st.st_size
             freed[h] = n if paths else t["size"]
-        if with_data:
-            self.connections.torrents.remove(with_data, True)
-        if without:
-            self.connections.torrents.remove(without, False)
-        for h in going:
-            ts.pop(h, None)
+        for group, data in ((with_data, True), (without, False)):
+            if group:
+                self.connections.torrents.remove(group, data)
+                for h in group:  # taken out right away, so a failure in the second call leaves ts accurate
+                    ts.pop(h, None)
         return freed, set(without)
 
     def capture_restore(self, t: Torrent) -> JSON:

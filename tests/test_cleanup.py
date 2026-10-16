@@ -211,6 +211,23 @@ def test_low_disk_space_deletes_early(lab: Lab, start: StartFn, golden) -> None:
     golden("log", [x for x in s.log() if "GB free" not in x])
 
 
+def test_low_disk_space_keeps_titles_marked_never_delete(lab: Lab, start: StartFn) -> None:
+    keep = lab.add_movie("Charge", 2022, ratio=0.1, seeding_days=1)
+    go = lab.add_movie("Spring", 2019, ratio=0.1, seeding_days=1)
+    s = start(
+        rule_list=[{"type": "title", "match": "charge", "mode": "never", "min_seed_days": None, "min_ratio": None}]
+    )
+    for m in (keep, go):
+        lab.delete_movie_files(m)
+        s.webhook(lab.movie_event(m))
+    assert keep.torrent and go.torrent
+    s.wait_status(keep.torrent.hash, "^seeding")
+    assert s.post("/api/low-space", {"enabled": True, "min_free_gb": 10**9}).status_code == 200
+    s.wait_log(f"deleting '{go.torrent.name}' early")  # oldest first: without the title rule, Charge would go first
+    assert keep.torrent.hash in lab.torrents
+    assert [r["name"] for r in s.api("/api/history")["rows"]] == [go.torrent.name]
+
+
 def test_path_mappings(lab: Lab, start: StartFn) -> None:
     lab.mount_apps_at("/data")
     m = lab.add_movie("Spring", 2019, ratio=9, seeding_days=99)
