@@ -178,6 +178,7 @@ def test_web_page_instead_of_json() -> None:
         "a": 1
     }
     assert parse_body(httpx.Response(200, content=b"ok")) == "ok"
+    assert parse_body(httpx.Response(200, headers={"content-type": "application/json"}, content=b"")) == ""
 
 
 def test_extra_instance_keys(core: Shredarr) -> None:
