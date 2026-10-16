@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from shredarr.app import Shredarr
-from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable
+from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed, parse_body
 from shredarr.config import NOTIFY_DEFAULTS
 from shredarr.services import notifications
 from shredarr.services.connections import TorrentService
@@ -131,8 +131,10 @@ def test_torrent_client_signs_in_again(core: Shredarr, monkeypatch: pytest.Monke
         ServiceUnreachable("down"),
         ServiceError("odd"),
         None,
+        SignInFailed("wrong password"),
     ]
     made: list[object] = []
+    closed: list[object] = []
 
     class Client:
         def torrents(self, hashes: Any = None) -> list[Any]:
@@ -140,6 +142,9 @@ def test_torrent_client_signs_in_again(core: Shredarr, monkeypatch: pytest.Monke
             if fail:
                 raise fail
             return []
+
+        def close(self) -> None:
+            closed.append(self)
 
     def make(kind: str, conf: Any, local: Any = None) -> Client:
         made.append(kind)
@@ -151,7 +156,22 @@ def test_torrent_client_signs_in_again(core: Shredarr, monkeypatch: pytest.Monke
     with pytest.raises(ServiceUnreachable):
         ts.all()
     assert ts.all() == []  # a client error, then a new client
+    with pytest.raises(SignInFailed):  # a wrong password isn't tried twice
+        ts.all()
+    assert ts.all([]) == []  # no hashes asked for: no torrents, without asking the client
     assert len(made) == 4 and not outcomes
+    assert len(closed) == 4  # every client that was thrown away was closed
+
+
+def test_web_page_instead_of_json() -> None:
+    """A reverse proxy's sign-in page is an error, not an answer; JSON is read even with leading whitespace."""
+    page = httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>sign in</html>")
+    with pytest.raises(ServiceError, match="web page"):
+        parse_body(page)
+    assert parse_body(httpx.Response(200, headers={"content-type": "application/json"}, content=b' {"a": 1}')) == {
+        "a": 1
+    }
+    assert parse_body(httpx.Response(200, content=b"ok")) == "ok"
 
 
 def test_extra_instance_keys(core: Shredarr) -> None:

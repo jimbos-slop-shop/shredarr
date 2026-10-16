@@ -25,6 +25,10 @@ class ServiceHTTPError(ServiceError):
         return self.status in (401, 403)
 
 
+class SignInFailed(ServiceError):
+    """Wrong username, password or API key: trying again won't help."""
+
+
 class ServiceUnreachable(ServiceError):
     """No answer at all: wrong address, the app is down, a timeout."""
 
@@ -65,8 +69,17 @@ def describe(e: Exception) -> str:
 
 
 def parse_body(r: httpx.Response) -> Any:
-    """JSON if the app sent JSON, otherwise the text (some endpoints answer with plain text or nothing)."""
-    return r.json() if r.content[:1] in (b"[", b"{") else r.text
+    """JSON if the app sent JSON, otherwise the text (some endpoints answer with plain text or nothing). A web page
+    means something else answered, such as a reverse proxy's sign-in page."""
+    kind = r.headers.get("content-type", "")
+    if "html" in kind:
+        raise ServiceError("got a web page instead of an API answer (check the address)")
+    if "json" in kind or r.content.lstrip()[:1] in (b"[", b"{"):
+        try:
+            return r.json()
+        except ValueError as e:
+            raise ServiceError("the answer wasn't valid JSON") from e
+    return r.text
 
 
 class JsonApi:
