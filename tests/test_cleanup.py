@@ -102,6 +102,7 @@ def test_deletion_delay(lab: Lab, start: StartFn) -> None:
 
 def test_torrent_removed_from_the_client_leaves_the_queue(lab: Lab, start: StartFn) -> None:
     m = lab.add_movie("Spring", 2019, ratio=0.1)
+    lab.add_movie("Charge", 2022)  # still in the client, so the client isn't empty
     s = start()
     lab.delete_movie_files(m)
     s.webhook(lab.movie_event(m))
@@ -111,6 +112,22 @@ def test_torrent_removed_from_the_client_leaves_the_queue(lab: Lab, start: Start
     s.sweep()
     s.wait_log("is gone from qBittorrent; dropping it from the queue")
     assert m.torrent.hash not in s.pending()
+
+
+def test_an_empty_client_keeps_the_queue_for_now(lab: Lab, start: StartFn) -> None:
+    """A client that lists no torrents at all may just be starting up."""
+    m = lab.add_movie("Spring", 2019, ratio=0.1)
+    s = start()
+    lab.delete_movie_files(m)
+    s.webhook(lab.movie_event(m))
+    assert m.torrent
+    s.wait_status(m.torrent.hash, "^seeding")
+    lab.remove_torrent(m.torrent.hash, True)
+    s.sweep()
+    s.wait_log("reports no torrents at all; keeping the cleanup queue")
+    s.sweep()
+    assert m.torrent.hash in s.pending()
+    assert not any("dropping it from the queue" in x for x in s.log())
 
 
 def test_rar_release_counts_as_in_library_through_import_history(lab: Lab, start: StartFn, golden) -> None:

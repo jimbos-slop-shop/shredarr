@@ -27,6 +27,7 @@ from .trackers import Trackers, tracker_host
 
 log = logging.getLogger(__name__)
 Torrents = dict[str, Torrent]
+EMPTY_CLIENT_WAIT = 15 * 60  # seconds a torrent client must report no torrents before the queue is dropped
 
 
 class TorrentFiles:
@@ -125,6 +126,7 @@ class Cleaner:
         self.after_sweep: list[Callable[[], None]] = []  # e.g. checking on redownloads
         self._lock = threading.Lock()
         self._after_lock = threading.Lock()  # one after-sweep run at a time, outside the sweep lock
+        self._empty_since: float | None = None  # when the torrent client started reporting no torrents at all
 
     def rule(self, t: Torrent, overrides: dict[str, Rule], c: Config, title: str | None = None) -> Rule:
         return rule_for(t, overrides, c, title, self.trackers.names)
@@ -166,7 +168,10 @@ class Cleaner:
             if not rows and not ov and not self.redownloads.open():
                 return False
             ts = {t["hash"]: t for t in self.connections.torrents.all()}
+            if rows and not ts and self.client_just_emptied(c):
+                return True
             if ts:  # forget rules of torrents that no longer exist
+                self._empty_since = None
                 self.overrides.remove(*[h for h in ov if h not in ts])
             groups = self.library.cross_seed_groups(list(ts.values()), 0)
             if self.queue_cross_seeds([(p.hash, p.name) for p in rows], ts, groups):
@@ -189,6 +194,18 @@ class Cleaner:
                     self.pending.set_status(p.hash, status)
             self.low_space_pass(c, ctx, ov)
             return True
+
+    def client_just_emptied(self, c: Config) -> bool:
+        """A client that's starting up can briefly list no torrents at all. Dropping the whole queue (and its Undo
+        data) then would be wrong, so an empty list only counts once it has stayed empty for a while."""
+        now = time.time()
+        if self._empty_since is None:
+            self._empty_since = now
+            self.activity.info(
+                f"{c.client_name} reports no torrents at all; keeping the cleanup queue for now "
+                "in case it's starting up"
+            )
+        return now - self._empty_since < EMPTY_CLIENT_WAIT
 
     def check(
         self,
