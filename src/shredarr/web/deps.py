@@ -28,6 +28,14 @@ def session_token(request: Request) -> str | None:
     return request.cookies.get(SESSION_COOKIE)
 
 
+PROXY_HEADERS = ("x-forwarded-for", "x-real-ip", "forwarded")
+
+
 def is_local(request: Request) -> bool:
-    """Scripts inside the container (health check, set-up tools) don't need to sign in."""
-    return bool(request.client) and request.client.host == "127.0.0.1"  # type: ignore[union-attr]
+    """Scripts inside the container (health check, set-up tools) don't need to sign in. A request a reverse proxy
+    passed on isn't local, even when the proxy runs on the same machine: proxies add one of these headers."""
+    return (
+        bool(request.client)
+        and request.client.host == "127.0.0.1"  # type: ignore[union-attr]
+        and not any(h in request.headers for h in PROXY_HEADERS)
+    )

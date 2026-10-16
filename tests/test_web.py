@@ -301,3 +301,12 @@ def test_unconfigured(lab: Lab, start: StartFn, golden) -> None:
     )  # (no config: the update check is on)
     time.sleep(0.5)
     assert s.log() == ["Shredarr started"]
+
+
+def test_a_proxy_on_the_same_machine_still_needs_sign_in(lab: Lab, start: StartFn) -> None:
+    """Local scripts skip sign-in, but a reverse proxy on the same machine passes on other people's requests."""
+    s = start()
+    with httpx.Client(base_url=f"http://127.0.0.1:{s.port}", timeout=30, follow_redirects=False) as c:
+        assert c.get("/api/torrents").status_code == 200
+        for header in ("X-Forwarded-For", "X-Real-IP", "Forwarded"):
+            assert c.get("/api/torrents", headers={header: "203.0.113.9"}).status_code == 401
