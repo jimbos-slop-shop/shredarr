@@ -1,5 +1,5 @@
 # Build: install Shredarr and its locked dependencies into a virtual environment.
-FROM python:3.13-slim AS build
+FROM python:3.14-slim AS build
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -10,7 +10,7 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable
 
 # Run: the virtual environment, plus unar so Undo can unpack RAR releases (Settings → RAR restore).
-FROM python:3.13-slim
+FROM python:3.14-slim
 LABEL org.opencontainers.image.source="https://github.com/jschaef80/shredarr" \
       org.opencontainers.image.description="Delete it in Jellyfin or Plex, and it's gone everywhere." \
       org.opencontainers.image.licenses="MIT"
