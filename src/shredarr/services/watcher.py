@@ -78,13 +78,15 @@ class LibraryWatcher:
         prev = self.previous()
         gone = [p for p in (prev or {}) if p not in now]
         if prev and len(gone) > MASS_VANISH[0] and len(gone) > MASS_VANISH[1] * len(prev):
-            # a disk or share that went away isn't a delete: keep the old list and look again next time (said once,
-            # not on every look while it stays that way)
+            # a disk or share that went away isn't a delete: keep the old list and look again next time. Said once
+            # (not on every look while it stays that way), as a problem, so it's also sent as a notification: if it
+            # was a real delete after all, nothing else will clean it up
             if len(gone) != self.vanished:
                 self.vanished = len(gone)
-                self.activity.info(
+                self.activity.error(
                     f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
-                    "going offline, not a delete, so nothing was done"
+                    "going offline, not a delete, so nothing was done. If you did delete them, their torrents "
+                    "show under Leftovers on the dashboard"
                 )
             return None
         self.vanished = 0
