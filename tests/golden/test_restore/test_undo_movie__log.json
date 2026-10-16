@@ -5,7 +5,7 @@
   "  removed 'Raygun' from Radarr (with import exclusion)",
   "  removed 'Raygun' from Seerr",
   "Undo: Raygun",
-  "  done: re-added to Radarr",
   "  done: took 1 torrent off the cleanup list",
+  "  done: re-added to Radarr",
   "  done: re-imported 'Raygun.2024.1080p.BluRay.x264-LAB': 1 file back in the library"
 ]

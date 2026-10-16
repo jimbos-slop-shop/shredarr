@@ -173,6 +173,8 @@ class Redownloader:
             f"Redownload: {title}" + ("" if is_movie else f" {episodes_text(info.get('episodes') or [])}")
         )
         try:
+            if how == "same" and not self.saved.has(info.get("hash")):  # checked before anything is changed
+                raise ServiceError("the saved .torrent file is gone; try Search again instead")
             arr = self.connections.arr(info["app"])
             if isinstance(arr, RadarrClient):
                 self.activity.info("  done: " + self.restorer.ensure_movie(arr, info["movie"]))
@@ -281,8 +283,8 @@ class Redownloader:
             if t["progress"] < 1 or time.time() - max(r.ts, r.last_try or 0) < NUDGE_AFTER or r.tries >= NUDGE_TRIES:
                 continue
             self.redownloads.tried(r.hash)
-            arr = self.connections.arr(r.app)
             try:
+                arr = self.connections.arr(r.app)
                 how = self.restorer.restore(arr, "movie" if kind_of(r.app) == "radarr" else "tv", t)
                 self.activity.info(f"Redownload of '{r.title}' imported: {how}")
             except Exception as e:  # tried again next time

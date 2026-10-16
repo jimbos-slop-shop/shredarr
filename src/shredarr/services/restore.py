@@ -265,10 +265,10 @@ class Undo:
                 f"so it's back in your library and {c.media_name}"
             )
         return [
-            first,
-            middle,
             f"Take {'these torrents' if n > 1 else 'the torrent'} off the cleanup list. "
             f"{'They keep' if n > 1 else 'It keeps'} seeding as normal",
+            first,
+            middle,
         ]
 
     def run(self, h: str) -> None:
@@ -291,21 +291,23 @@ class Undo:
                 self.activity.error(f"  FAILED: {e}")
                 return False
 
-        if isinstance(arr, RadarrClient) and snap["kind"] == "movie":
-            step(lambda: self.restorer.ensure_movie(arr, snap["movie"]))
-        elif isinstance(arr, SonarrClient) and snap["kind"] == "series":
-            step(lambda: self.restorer.ensure_series(arr, snap))
-        elif isinstance(arr, SonarrClient):
-            step(lambda: self.restorer.remonitor(arr, snap))
         try:
             groups = self.library.cross_seed_groups(self.connections.torrents.all(), 0)
         except ServiceError:
             groups = {}
         siblings = {x for h0, _, _ in rows for x in groups.get(h0, ())} - {x for x, _, _ in rows}
-        # off the cleanup list first, so a sweep can't delete them while they're being restored
+        # off the cleanup list before anything else: re-adding can take a minute, and a sweep in that time could
+        # otherwise still delete them
         self.pending.remove(*[x for x, _, _ in rows])
         self.pending.remove(*siblings, source="cross-seed")
         self.activity.info(f"  done: took {len(rows)} torrent{'s' * (len(rows) != 1)} off the cleanup list")
+        ok = True
+        if isinstance(arr, RadarrClient) and snap["kind"] == "movie":
+            ok = step(lambda: self.restorer.ensure_movie(arr, snap["movie"]))
+        elif isinstance(arr, SonarrClient) and snap["kind"] == "series":
+            ok = step(lambda: self.restorer.ensure_series(arr, snap))
+        elif isinstance(arr, SonarrClient):
+            ok = step(lambda: self.restorer.remonitor(arr, snap))
 
         def reimported(tt: Torrent) -> str:
             return f"re-imported '{tt['name']}': " + self.restorer.reimport(arr, kind, tt)
@@ -313,8 +315,7 @@ class Undo:
         def unpacked(tt: Torrent) -> str:
             return f"restored '{tt['name']}': " + self.restorer.unpack(arr, kind, tt)
 
-        ok = True
-        for x, _, _ in rows:
+        for x, name, _ in rows:
             tt = t if x == h else self.connections.torrents.get(x)
             how = restorable(tt["content_path"]) if tt else None
             if tt and how == "video":
@@ -322,6 +323,9 @@ class Undo:
             elif tt and how == "rar":
                 self.activity.info(f"  unpacking '{tt['name']}'; this can take a minute or two")
                 ok &= step(partial(unpacked, tt))
+            else:  # gone from the client, or nothing left in it to restore from
+                ok = False
+                self.activity.error(f"  FAILED: nothing to restore {name} from: its torrent is gone or has no video")
         seerr = self.connections.seerr()
         if seerr:
             with contextlib.suppress(ServiceError):

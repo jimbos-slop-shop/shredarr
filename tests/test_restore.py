@@ -101,7 +101,7 @@ def test_undo_problems(lab: Lab, start: StartFn, golden) -> None:
     assert s.post("/api/restore", {"enabled": True}).status_code == 200
     assert s.read_config()["restore"] == {"enabled": True}
     plan = s.api("/api/undo-plan", hash=rar.torrent.hash)
-    assert plan["problem"] is None and "Unpack it again" in plan["steps"][1]
+    assert plan["problem"] is None and "Unpack it again" in plan["steps"][2]
 
 
 def test_redownload_same_release(lab: Lab, start: StartFn, golden) -> None:

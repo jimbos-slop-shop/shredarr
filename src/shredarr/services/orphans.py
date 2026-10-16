@@ -6,6 +6,7 @@ import os
 import time
 from typing import Any
 
+from ..clients.base import NotConfigured, ServiceHTTPError
 from ..clients.servarr import RadarrClient, SonarrClient
 from ..config import JSON, Config, ConfigStore, kind_of
 from ..files import nlink
@@ -119,7 +120,10 @@ class Orphans:
         for i in ids:
             app, *rest = str(i).split(":")
             if kind_of(app) == "radarr" and rest:
-                m = self.connections.radarr(app).movie(int(rest[0]))
+                try:
+                    m = self.connections.radarr(app).movie(int(rest[0]))
+                except (ServiceHTTPError, NotConfigured):  # already gone (or that Radarr was removed): skip it
+                    continue
                 f = m.get("movieFile")
                 if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
                     paths.add(p)
@@ -132,14 +136,14 @@ class Orphans:
                         )
                     )
             elif kind_of(app) == "sonarr" and len(rest) == 2:
-                sid, sn, sonarr = int(rest[0]), int(rest[1]), self.connections.sonarr(app)
-                s = sonarr.series(sid)
-                lone = {
-                    f["id"]: f
-                    for f in sonarr.episode_files(sid)
-                    if f["seasonNumber"] == sn and not has_torrent(local(f["path"]))
-                }
-                eps = [e for e in sonarr.episodes(sid) if e.get("episodeFileId") in lone]
+                sid, sn = int(rest[0]), int(rest[1])
+                try:
+                    sonarr = self.connections.sonarr(app)
+                    s, files, all_eps = sonarr.series(sid), sonarr.episode_files(sid), sonarr.episodes(sid)
+                except (ServiceHTTPError, NotConfigured):  # already gone (or that Sonarr was removed): skip it
+                    continue
+                lone = {f["id"]: f for f in files if f["seasonNumber"] == sn and not has_torrent(local(f["path"]))}
+                eps = [e for e in all_eps if e.get("episodeFileId") in lone]
                 if eps:
                     paths |= {local(f["path"]) for f in lone.values()}
                     series.append((app, s, eps))

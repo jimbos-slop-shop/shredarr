@@ -5,8 +5,8 @@
   "  removed 'Harbor Lights' from Sonarr (with import list exclusion)",
   "  removed 'Harbor Lights' from Seerr",
   "Undo: Harbor Lights",
-  "  done: re-added to Sonarr with its monitoring restored",
   "  done: took 2 torrents off the cleanup list",
+  "  done: re-added to Sonarr with its monitoring restored",
   "  done: re-imported 'Harbor.Lights.S01.1080p.WEB-DL-LAB': 2 files back in the library",
   "  done: re-imported 'Harbor.Lights.S02.1080p.WEB-DL-LAB': 2 files back in the library"
 ]
