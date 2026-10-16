@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 import pytest
+from starlette.requests import Request
 
 from shredarr.app import Shredarr
 from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed, parse_body
@@ -22,6 +23,7 @@ from shredarr.services.connections import TorrentService
 from shredarr.services.health import Updates
 from shredarr.services.settings_editor import SettingsEditor
 from shredarr.settings import Settings
+from shredarr.web.deps import client_ip
 from tests.fakes.server import FakeServer, Response
 
 
@@ -225,3 +227,16 @@ def test_migration_finishes_a_step_that_was_cut_off(core: Shredarr) -> None:
     con = sqlite3.connect(core.settings.db_path)
     assert con.execute("pragma user_version").fetchone() == (len(MIGRATIONS),)
     con.close()
+
+
+def test_sign_in_limit_address() -> None:
+    """X-Forwarded-For only counts from a proxy on a private network, and only its last (proxy-added) entry."""
+
+    def ip(peer: str, forwarded: str | None = None) -> str:
+        headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+        return client_ip(Request({"type": "http", "client": (peer, 1234), "headers": headers}))
+
+    assert ip("8.8.8.8") == "8.8.8.8"
+    assert ip("8.8.8.8", "10.9.9.9") == "8.8.8.8"  # straight from the internet: the header is ignored
+    assert ip("172.18.0.2", "198.51.100.7") == "198.51.100.7"  # a proxy in the Docker network
+    assert ip("127.0.0.1", "1.1.1.1, 198.51.100.7") == "198.51.100.7"  # the first entry is whatever the client sent
