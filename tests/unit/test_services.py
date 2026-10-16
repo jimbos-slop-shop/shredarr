@@ -16,6 +16,7 @@ import pytest
 from shredarr.app import Shredarr
 from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed, parse_body
 from shredarr.config import NOTIFY_DEFAULTS
+from shredarr.db import MIGRATIONS
 from shredarr.services import notifications
 from shredarr.services.connections import TorrentService
 from shredarr.services.health import Updates
@@ -222,5 +223,5 @@ def test_migration_finishes_a_step_that_was_cut_off(core: Shredarr) -> None:
     con.close()
     core.db.migrate()
     con = sqlite3.connect(core.settings.db_path)
-    assert con.execute("pragma user_version").fetchone() == (2,)
+    assert con.execute("pragma user_version").fetchone() == (len(MIGRATIONS),)
     con.close()

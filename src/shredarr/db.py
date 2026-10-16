@@ -53,7 +53,12 @@ def _v2_log_level(con: sqlite3.Connection) -> None:
         con.execute("alter table log add column level text")
 
 
-MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_v1_shredarr_1x, _v2_log_level]
+def _v3_history_index(con: sqlite3.Connection) -> None:
+    """History is read newest first and summed by date on every refresh, and it keeps growing."""
+    con.execute("create index if not exists cleaned_ts on cleaned(ts)")
+
+
+MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_v1_shredarr_1x, _v2_log_level, _v3_history_index]
 
 
 class Database:
