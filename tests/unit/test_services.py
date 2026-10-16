@@ -287,3 +287,16 @@ def test_config_saves_where_chmod_is_refused(core: Shredarr, monkeypatch: pytest
     monkeypatch.setattr(os, "fchmod", refuse)
     core.config.save({"dry_run": True})
     assert core.config.load().dry_run
+
+
+def test_cut_off_saved_torrents_are_cleaned_up(core: Shredarr) -> None:
+    os.makedirs(core.saved.folder, exist_ok=True)
+    old, new = (os.path.join(core.saved.folder, f"{c * 40}.torrent.tmp") for c in "ab")
+    for p in (old, new):
+        with open(p, "wb") as f:
+            f.write(b"d8:announce")
+    os.utime(old, (time.time() - 7200, time.time() - 7200))
+    core.saved.prune()
+    assert not os.path.exists(old) and os.path.exists(new)  # the new one may still be being written
+    core.saved.delete_all()
+    assert not os.path.exists(new)

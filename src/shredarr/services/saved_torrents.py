@@ -43,6 +43,12 @@ class SavedTorrents:
     def files(self) -> list[str]:
         return sorted(glob.glob(os.path.join(glob.escape(self.folder), "*.torrent")))
 
+    def _unfinished(self, older_than: float = 0) -> list[str]:
+        """Temporary files left behind by a save that was cut off (Shredarr stopped while writing)."""
+        cutoff = time.time() - older_than
+        found = glob.glob(os.path.join(glob.escape(self.folder), "*.torrent.tmp"))
+        return [p for p in found if os.path.getmtime(p) <= cutoff]
+
     def summary(self) -> JSON:
         """How many are kept and how much space they take, for Settings."""
         sizes = [os.path.getsize(p) for p in self.files()]
@@ -61,6 +67,7 @@ class SavedTorrents:
 
     def prune(self) -> int:
         """Remove saved files older than the setting allows. Returns how many went."""
+        self._remove(self._unfinished(older_than=3600))  # an hour old: not one being written right now
         keep = self.config.load().torrent_retention
         seconds = self.config.load().torrent_retention_seconds
         if seconds is None:
@@ -75,6 +82,7 @@ class SavedTorrents:
         return n
 
     def delete_all(self) -> int:
+        self._remove(self._unfinished())
         n, size = self._remove(self.files())
         self.activity.info(
             f"Deleted all saved .torrent files ({plural(n, 'file')}, {human(size)}): "
