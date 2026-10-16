@@ -67,6 +67,16 @@ def find_series(
     return hits[0] if len(hits) == 1 else None
 
 
+def find_movie(movies: list[JSON], tmdb: Any = None, imdb: Any = None, title: str | None = None) -> JSON | None:
+    """The movie a media server event is about: by TMDb id, then IMDb id, then by title if only one has it."""
+    for key, val in (("tmdbId", tmdb), ("imdbId", imdb)):
+        hit = next((m for m in movies if val and m.get(key) == val), None)
+        if hit:
+            return hit
+    hits = [m for m in movies if m["title"].casefold() == (title or "").casefold()]
+    return hits[0] if len(hits) == 1 else None
+
+
 def season_folder_pattern(season: int) -> str:
     return rf"Season 0*{season}" + ("|Specials" if season == 0 else "")
 
@@ -132,15 +142,8 @@ class MediaDeletes:
     def on_movie(self, c: Config, ev: JSON) -> None:
         """With more than one Radarr (say a 4K one), only the instances whose copy is really gone are cleaned up."""
         found = []
-        for inst, radarr in self.connections.arrs("radarr"):
-            assert isinstance(radarr, RadarrClient)
-            movies = radarr.movies()
-            m = next((m for m in movies if ev.get("tmdb_id") and m.get("tmdbId") == ev["tmdb_id"]), None) or next(
-                (m for m in movies if ev.get("imdb_id") and m.get("imdbId") == ev["imdb_id"]), None
-            )
-            if not m:
-                hits = [m for m in movies if m["title"].casefold() == (ev.get("name") or "").casefold()]
-                m = hits[0] if len(hits) == 1 else None
+        for inst, radarr in self.connections.radarrs():
+            m = find_movie(radarr.movies(), ev.get("tmdb_id"), ev.get("imdb_id"), ev.get("name"))
             if m:
                 kept = bool(m.get("hasFile")) and self.paths.on_disk((m.get("movieFile") or {}).get("path"))
                 found.append((inst.key, inst.name, radarr, m, kept))
@@ -168,8 +171,7 @@ class MediaDeletes:
 
     def on_series(self, c: Config, ev: JSON) -> None:
         found = []
-        for inst, sonarr in self.connections.arrs("sonarr"):
-            assert isinstance(sonarr, SonarrClient)
+        for inst, sonarr in self.connections.sonarrs():
             s = find_series(sonarr, ev.get("tvdb_id"), ev.get("tmdb_id"), ev.get("imdb_id"), ev.get("name"))
             if s:
                 found.append((inst.key, inst.name, sonarr, s, os.path.isdir(self.paths.local(s["path"]))))
@@ -211,8 +213,7 @@ class MediaDeletes:
     def on_episodes(self, c: Config, ev: JSON, season: int, numbers: range | None = None) -> None:
         """Whole season when numbers is None, otherwise the listed episode numbers."""
         ids, found = self.jellyfin_series_ids(ev), False
-        for inst, sonarr in self.connections.arrs("sonarr"):
-            assert isinstance(sonarr, SonarrClient)
+        for inst, sonarr in self.connections.sonarrs():
             s = find_series(sonarr, ids.get("tvdb"), ids.get("tmdb"), ids.get("imdb"), ev.get("series_name"))
             if s:
                 found = True
@@ -357,8 +358,8 @@ class MediaDeletes:
                         self.notifier.notify(f"Deleted in {media}", f"Movie: {m['title']}", "jellyfin")
                         others = [  # copies of the movie in the other Radarrs (e.g. 4K)
                             x
-                            for other, client in self.connections.arrs("radarr")
-                            if other.key != inst.key and isinstance(client, RadarrClient)
+                            for other, client in self.connections.radarrs()
+                            if other.key != inst.key
                             for x in client.movies(m["tmdbId"])
                             if x.get("hasFile")
                         ]

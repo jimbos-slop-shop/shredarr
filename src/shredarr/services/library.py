@@ -170,8 +170,7 @@ class Library:
             out["seriesId"] = out["seriesId"] or i.get("seriesId")
         if out["seriesId"] and ep_ids:
             try:
-                sonarr = self.connections.arr(out["app"])
-                assert isinstance(sonarr, SonarrClient)
+                sonarr = self.connections.sonarr(out["app"])
                 eps = sonarr.episodes(out["seriesId"])
                 out["episodes"] = sorted([e["seasonNumber"], e["episodeNumber"]] for e in eps if e["id"] in ep_ids)
             except (ServiceError, AssertionError):

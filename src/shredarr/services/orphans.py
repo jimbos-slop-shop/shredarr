@@ -7,7 +7,6 @@ import time
 from typing import Any
 
 from ..clients.base import NotConfigured, ServiceHTTPError
-from ..clients.servarr import RadarrClient, SonarrClient
 from ..config import JSON, Config, ConfigStore, kind_of
 from ..files import nlink
 from ..repositories import HistoryRepo
@@ -58,8 +57,7 @@ class Orphans:
             return self._cache
         has_torrent, items = self.has_torrent(), []
         local = self.connections.paths().local
-        for inst, radarr in self.connections.arrs("radarr"):
-            assert isinstance(radarr, RadarrClient)
+        for inst, radarr in self.connections.radarrs():
             for m in radarr.movies():
                 f = m.get("movieFile")
                 if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
@@ -78,8 +76,7 @@ class Orphans:
                             "path": p,
                         }
                     )
-        for inst, sonarr in self.connections.arrs("sonarr"):
-            assert isinstance(sonarr, SonarrClient)
+        for inst, sonarr in self.connections.sonarrs():
             for s in sonarr.all_series():
                 if not (s.get("statistics") or {}).get("episodeFileCount"):
                     continue

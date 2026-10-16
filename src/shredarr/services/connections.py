@@ -44,13 +44,19 @@ class Connections:
 
     # ------------------------------------------------------------------ Sonarr / Radarr
     def arr_client(self, inst: ArrInstance) -> SonarrClient | RadarrClient:
-        url, key = inst.conf["url"], inst.conf.get("api_key", "")
-        if inst.kind == "sonarr":
-            return self._client(SonarrClient, url, key)
-        return self._client(RadarrClient, url, key)
+        return self._arr(SonarrClient, inst) if inst.kind == "sonarr" else self._arr(RadarrClient, inst)
+
+    def _arr[A: (SonarrClient, RadarrClient)](self, cls: type[A], inst: ArrInstance) -> A:
+        return self._client(cls, inst.conf["url"], inst.conf.get("api_key", ""))
 
     def arrs(self, kind: str | None = None) -> list[tuple[ArrInstance, SonarrClient | RadarrClient]]:
         return [(x, self.arr_client(x)) for x in self.config.load().arr_instances(kind)]
+
+    def sonarrs(self) -> list[tuple[ArrInstance, SonarrClient]]:
+        return [(x, self._arr(SonarrClient, x)) for x in self.config.load().arr_instances("sonarr")]
+
+    def radarrs(self) -> list[tuple[ArrInstance, RadarrClient]]:
+        return [(x, self._arr(RadarrClient, x)) for x in self.config.load().arr_instances("radarr")]
 
     def arr(self, key: str) -> SonarrClient | RadarrClient:
         """A Sonarr/Radarr instance by key. Falls back to the main instance of that kind if the instance was removed
