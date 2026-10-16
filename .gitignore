@@ -10,3 +10,5 @@ RESET-CODE.txt
 .ruff_cache/
 .mypy_cache/
 dist/
+
+!tests/fixtures/*.db

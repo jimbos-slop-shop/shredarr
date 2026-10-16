@@ -49,7 +49,7 @@ def test_episode_and_season_deleted_on_disk(lab: Lab, start: StartFn, golden) ->
     s.wait_log("^Plex deleted Episode")
     lab.delete_season_folder(show, 2)
     s.wait_log("^Plex deleted Season")
-    wait_for(lambda: len(lab.sonarr.requests("PUT", "/api/v3/episode/monitor")) == 2, what="both unmonitored")
+    s.wait_log("unmonitored season 2 of 'Paper Moons'")
     assert show.record["seasons"][1]["monitored"] is False and show.record["seasons"][0]["monitored"] is True
     golden("log", [x for x in s.log() if not x.startswith("deleted torrent")])
 
