@@ -215,8 +215,8 @@ function render() {
   const cats = [...new Set(data.torrents.map((t) => t.category))].sort();
   if ($("cat").options.length - 1 !== cats.length) {
     const v = $("cat").value;
-    $("cat").innerHTML =
-      '<option value="">All categories</option>' + cats.map((c) => `<option value="${c}">${catOf(c)[2]}</option>`).join("");
+    // categories come from the torrent client, so they're set as text, never as HTML
+    $("cat").replaceChildren(new Option("All categories", ""), ...cats.map((c) => new Option(catOf(c)[2], c)));
     $("cat").value = v;
   }
   const tb = $("rows");
@@ -1264,14 +1264,16 @@ async function loadSettings() {
     fill($("polform"), settings.policy);
     $("uform").elements.enabled.checked = settings.update_check;
     const u = settings.update || {};
-    $("about-ver").innerHTML =
-      `Version <b>${settings.version}</b>` +
-      (u.newer
-        ? ` · <a href="${u.url}" target="_blank" rel="noopener">v${u.latest} is available</a>`
-        : u.latest
-          ? " · up to date"
-          : "") +
-      ` · <a href="https://github.com/${settings.repo}" target="_blank" rel="noopener">GitHub</a>`;
+    // the update link comes from GitHub's answer, so the line is built from elements rather than an HTML string
+    const link = (href, label) =>
+      Object.assign(document.createElement("a"), { href, textContent: label, target: "_blank", rel: "noopener" });
+    $("about-ver").replaceChildren(
+      "Version ",
+      Object.assign(document.createElement("b"), { textContent: settings.version }),
+      ...(u.newer ? [" · ", link(u.url, `v${u.latest} is available`)] : u.latest ? [" · up to date"] : []),
+      " · ",
+      link(`https://github.com/${settings.repo}`, "GitHub"),
+    );
     $("pol-text").textContent = polText(settings.policy);
     $("rchecks").hidden = true;
     if (settings.missing.length) toast("Connect " + settings.missing.map((k) => NAMES[k]).join(", ") + " to get started");
