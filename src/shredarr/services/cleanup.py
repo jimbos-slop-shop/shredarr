@@ -76,6 +76,7 @@ class Cleaner:
         self.saved = saved
         self.after_sweep: list[Callable[[], None]] = []  # e.g. checking on redownloads
         self._lock = threading.Lock()
+        self._after_lock = threading.Lock()  # one after-sweep run at a time, outside the sweep lock
 
     def rule(self, t: Torrent, overrides: dict[str, Rule], c: Config, title: str | None = None) -> Rule:
         return rule_for(t, overrides, c, title, self.trackers.names)
@@ -88,14 +89,34 @@ class Cleaner:
             self.activity.error(f"sweep failed: {e}")
 
     def sweep(self) -> None:
+        if self._sweep():
+            self._after_sweep()
+
+    def _after_sweep(self) -> None:
+        """Hooks such as the redownload check can wait minutes for an import, so they run after the sweep lock is let
+        go: other sweeps (after a delete, a settings change) don't queue up behind them. If they're already running
+        from an earlier sweep, this sweep skips them."""
+        if not self._after_lock.acquire(blocking=False):
+            return
+        try:
+            for fn in self.after_sweep:
+                try:
+                    fn()
+                except Exception as e:  # reported; the sweep itself is done
+                    self.activity.error(f"redownload check failed: {e}")
+        finally:
+            self._after_lock.release()
+
+    def _sweep(self) -> bool:
+        """One pass over the cleanup queue. Returns whether it ran (there was something to look at)."""
         with self._lock:
             c = self.config.load()
             if c.missing:
-                return
+                return False
             rows = self.pending.all()
             ov = self.overrides.all()
             if not rows and not ov and not self.redownloads.open():
-                return
+                return False
             ts = {t["hash"]: t for t in self.connections.torrents.all()}
             if ts:  # forget rules of torrents that no longer exist
                 self.overrides.remove(*[h for h in ov if h not in ts])
@@ -119,11 +140,7 @@ class Cleaner:
                 else:
                     self.pending.set_status(p.hash, status)
             self.low_space_pass(c, ts, ov)
-            for fn in self.after_sweep:
-                try:
-                    fn()
-                except Exception as e:  # reported; the sweep itself is done
-                    self.activity.error(f"redownload check failed: {e}")
+            return True
 
     def check(
         self,
