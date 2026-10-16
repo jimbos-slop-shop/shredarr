@@ -72,6 +72,8 @@ def test_disk_going_offline_is_not_a_delete(lab: Lab, start: StartFn) -> None:
     for m in list(lab.movie_refs.values())[:24]:
         lab.delete_movie_files(m)
     s.wait_log("looks like a disk going offline")
+    time.sleep(2)  # a few more looks at the library: the message isn't repeated on each one
+    assert sum("looks like a disk going offline" in x for x in s.log()) == 1
     assert not lab.radarr.requests("DELETE")
 
 

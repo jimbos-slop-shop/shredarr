@@ -36,6 +36,7 @@ class LibraryWatcher:
         self.files: dict[str, list[int]] | None = None
         self.missing: dict[str, float] = {}
         self.offline = False
+        self.vanished = 0  # how many files the last "vanished at once" message was about, so it's logged once
 
     def library_files(self) -> dict[str, list[int]] | None:
         """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be
@@ -76,11 +77,16 @@ class LibraryWatcher:
         prev = self.previous()
         gone = [p for p in (prev or {}) if p not in now]
         if prev and len(gone) > MASS_VANISH[0] and len(gone) > MASS_VANISH[1] * len(prev):
-            # a disk or share that went away isn't a delete: keep the old list and look again next time
-            return self.activity.info(
-                f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
-                "going offline, not a delete, so nothing was done"
-            )
+            # a disk or share that went away isn't a delete: keep the old list and look again next time (said once,
+            # not on every look while it stays that way)
+            if len(gone) != self.vanished:
+                self.vanished = len(gone)
+                self.activity.info(
+                    f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
+                    "going offline, not a delete, so nothing was done"
+                )
+            return None
+        self.vanished = 0
         self.files = now
         with open(self.state_file + ".tmp", "w") as f:
             json.dump(now, f)
