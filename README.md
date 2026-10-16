@@ -68,6 +68,7 @@ The screenshots use made-up demo data; see [Try the demo](#try-the-demo).
 ## Requirements
 
 - A media server: **Jellyfin** with the **Webhook** plugin (Dashboard → Plugins → Catalog → *Webhook*), or **Plex**.
+  Jellyfin 12 works without turning on its legacy authorization.
 - **Sonarr** and/or **Radarr**. More instances (say a 4K Radarr) can be added.
 - A torrent client: **qBittorrent**, **Transmission** or **Deluge** (Deluge needs its **Label** plugin turned on
   for categories).
@@ -98,8 +99,9 @@ Then:
 1. Open `http://<your-server>:8089` and create a password.
 2. In **Settings → Connections**, enter the address and API key of Sonarr and Radarr, pick your torrent client and
    media server and enter theirs (and Seerr's or Prowlarr's if you use them). Use **Test** on each one, then
-   **Save connections**. For a Plex token, open any movie in Plex → ⋯ → *Get Info* → *View XML*; the token is at the
-   end of the address that opens.
+   **Save connections**. Once saved, **Test** uses the saved key if you leave it blank, but only at the saved
+   address: after changing an address, type the key again to test it. For a Plex token, open any movie in Plex →
+   ⋯ → *Get Info* → *View XML*; the token is at the end of the address that opens.
 3. **Jellyfin:** under **Jellyfin webhook**, enter the address Jellyfin can reach Shredarr at (for example
    `http://192.168.1.10:8089`) and click **Set up Jellyfin webhook**. **Plex:** nothing to set up (see below), but
    turn on *Allow media deletion* in Plex → Settings → Library so you can delete from Plex.
@@ -119,12 +121,16 @@ sends no notifications, whatever its settings say (a banner says so). Handy for 
 1. **You delete something in Jellyfin or Plex.** Jellyfin's Webhook plugin tells Shredarr (Jellyfin batches these,
    so it can take up to about 90 seconds). Plex can't tell other apps about deletes, so with Plex Shredarr watches
    your library folders: a movie or episode file that disappears and stays gone for a couple of minutes counts as
-   deleted. Renames, upgrades by Sonarr/Radarr and a disk going offline are recognized and ignored.
+   deleted. Renames, upgrades by Sonarr/Radarr and a disk going offline are recognized and ignored. When a lot of
+   files vanish at once (more than 20, and more than a fifth of the library), that looks like a disk going offline,
+   so Shredarr does nothing but sends a notification. If it was a real delete, the torrents show under
+   **Leftovers** on the dashboard.
 2. **Sonarr/Radarr and Seerr are updated right away**, according to *Settings → Cleanup behavior*. Shredarr notes
    which torrents the item came from (from Sonarr/Radarr's download history) and saves a snapshot for Undo.
 3. **The torrent keeps seeding** until none of its files are left in your library, its seeding rule is met and any
    deletion delay has passed. Then the torrent and its downloaded data are deleted from the torrent client, and the entry
-   moves to History, ready for Redownload.
+   moves to History, ready for Redownload. If the torrent client lists no torrents at all (while it starts up, say),
+   the cleanup list is kept for 15 minutes before its torrents count as gone.
 
 A deleted show or season whose folder still exists on disk is treated as Jellyfin tidying up an *empty* show, not
 as a delete, so weekly shows don't disappear from Sonarr when you delete their latest episode.
@@ -157,11 +163,15 @@ Settings has a menu on the left (a row of tabs on phones) and shows one section 
 - Forgot the password? **Forgot password?** on the sign-in page sends a one-time code to your notification
   services and also writes it to `RESET-CODE.txt` in the config folder and the container log. You can also run
   `docker exec shredarr shredarr set-password 'new password'`.
-- The Jellyfin webhook is authenticated with its own random token.
+- The Jellyfin webhook is authenticated with its own random token, made on first start. Without one, webhook calls
+  are refused.
+- Requests from the same machine, such as the container's health check, don't need the password. Requests passed
+  on by a reverse proxy always do, even when the proxy runs on the same machine.
 - API keys and passwords are stored in `config.json` in your config folder (readable only by its owner) and are
   never sent back to the browser. Tracker URLs are only ever shown as host names, never with your passkey.
 - Shredarr is meant for your home network. If you expose it to the internet, put it behind a reverse proxy with
-  HTTPS.
+  HTTPS. The wrong-password limit then counts the address the proxy passes on (the last `X-Forwarded-For` entry),
+  but only when the proxy connects from a private network address, such as one in the same Docker network.
 
 ## Try the demo
 

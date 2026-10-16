@@ -56,7 +56,12 @@ and deletes each torrent once `Library.in_library` is 0 and `rules.evaluate` say
 Some conventions:
 
 - **Clients only raise `ServiceError`** (`clients/base.py`), so services never deal with httpx, requests or library
-  exceptions. `ServiceHTTPError` carries the status code, `ServiceUnreachable` means no answer at all.
+  exceptions. `ServiceHTTPError` carries the status code, `ServiceUnreachable` means no answer at all, and
+  `SignInFailed` means wrong credentials: the torrent client session is signed in again once on other errors, but
+  never after `SignInFailed` (some clients block an address after a few failed sign-ins). A web page or broken JSON
+  where an API answer was expected is a `ServiceError` too.
+- **Torrent clients sit behind `TorrentClient`** (`clients/torrents/base.py`), including `close()`: a client that's
+  thrown away is closed.
 - **Library clients where they fit, thin clients where they don't.** qBittorrent, Transmission and Plex use their
   maintained client libraries. Sonarr/Radarr/Prowlarr, Seerr, Jellyfin and Deluge use small httpx clients: the
   libraries for those either miss endpoints Shredarr needs (pyarr has no filtered or per-item history, `/parse` or
@@ -66,7 +71,13 @@ Some conventions:
   Use `activity.info(...)` for what happened and `activity.error(...)` for problems (those also notify).
 - **config.json is read again when it changes**, so settings saved in the UI apply right away. Change it with
   `ConfigStore.update(...)`, never by editing what `load()` returns.
-- **Database changes are migrations.** Add a function to `MIGRATIONS` in `db.py`; never edit an existing one.
+- **Database changes are migrations.** Add a function to `MIGRATIONS` in `db.py`; never edit an existing one. Each
+  step runs in one transaction with its version number. Write it so it's safe to run again anyway (check before
+  adding a column, `create ... if not exists`).
+- **`files.py` and `text.py` stay generic** (walking folders, inodes, sizes, durations). Shredarr's own rules, such
+  as what counts as a video or how a seeding rule reads, belong in `services/`.
+- **Removing media is a list of `Step`s** (`services/removal.py`): the confirm dialog shows their descriptions, and
+  `run_steps()` runs them, honoring dry run and carrying on past a failed step.
 - **Long jobs started from the UI** (Delete now, Undo, Redownload) run in the background with `spawn(...)`; the
   request returns right away and the UI follows along in the activity log.
 
@@ -90,8 +101,8 @@ git diff tests/golden    # review every changed line: this is the visible change
 ```
 
 `tests/unit/` has plain unit tests for things the lab can't reach end to end (Discord and Pushover formats, the daily
-summary, update checks, retries). `tests/fixtures/state-1.2.1.db` is a database made by Shredarr 1.2.1, to keep
-upgrades working.
+summary, update checks, retries, the sign-in limit's address, migrations). `tests/fixtures/state-1.2.1.db` is a
+database made by Shredarr 1.2.1, to keep upgrades working.
 
 ## Trying a change on real data
 
