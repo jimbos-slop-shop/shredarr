@@ -1,0 +1,16 @@
+{
+  "addOptions": {
+    "monitor": "movieOnly",
+    "searchForMovie": false
+  },
+  "imdbId": "tt5918625",
+  "minimumAvailability": "released",
+  "monitored": true,
+  "path": "<LAB>/data/media/movies/Raygun (2024)",
+  "qualityProfileId": 4,
+  "rootFolderPath": "<LAB>/data/media/movies",
+  "tags": [],
+  "title": "Raygun",
+  "tmdbId": 351873,
+  "year": 2024
+}

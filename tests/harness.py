@@ -155,9 +155,11 @@ class Shredarr:
     def log_since(self, mark: int) -> list[str]:
         return self.log()[mark:]
 
-    def wait_log(self, pattern: str, timeout: float = 20) -> str:
+    def wait_log(self, pattern: str, timeout: float = 20, after: int = 0) -> str:
+        """Wait for a log line matching pattern; with after=n, only lines after the first n count."""
         rx = re.compile(pattern)
-        return wait_for(lambda: next((m for m in self.log() if rx.search(m)), None), timeout, 0.15, f"log line /{pattern}/")
+        return wait_for(lambda: next((m for m in self.log()[after:] if rx.search(m)), None), timeout, 0.15,
+                        f"log line /{pattern}/")
 
     def pending(self) -> dict[str, dict[str, Any]]:
         rows = self.sql("select hash, name, source, status, undo, event, content from pending")

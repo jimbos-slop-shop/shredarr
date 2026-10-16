@@ -1,0 +1,17 @@
+{
+  "app": "sonarr",
+  "same_available": false,
+  "steps": {
+    "same": [
+      "Put 'Paper Moons' back in Sonarr if it was removed, and monitor S01E02",
+      "Add the original torrent back to qBittorrent (Paper.Moons.S01E02.720p.HDTV), so the same release downloads again",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ],
+    "search": [
+      "Put 'Paper Moons' back in Sonarr if it was removed, and monitor S01E02",
+      "Have Sonarr search for S01E02 (whole seasons as season packs)",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ]
+  },
+  "what": "'Paper Moons' S01E02"
+}

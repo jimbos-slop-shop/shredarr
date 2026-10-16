@@ -57,11 +57,22 @@ def start(impl: str, lab: Lab, tmp_path: Any) -> Iterator[StartFn]:
 # ---------------------------------------------------------------------- golden files
 
 TIME_KEYS = {"added_on", "ts", "delete_after", "redownloaded", "expires", "created"}
+SHREDARR_VERSIONS = {"1.2.1", "2.0.0"}
+
+
+def placeholder(key: str, value: Any) -> Any:
+    if key in TIME_KEYS and isinstance(value, (int, float)):
+        return "<TS>"
+    if key == "free_gb" and isinstance(value, (int, float)):
+        return "<GB>"
+    if key in ("version", "latest") and value in SHREDARR_VERSIONS:
+        return "<VERSION>"
+    return drop_times(value)
 
 
 def drop_times(value: Any) -> Any:
     if isinstance(value, dict):
-        return {k: ("<TS>" if k in TIME_KEYS and isinstance(v, (int, float)) else drop_times(v)) for k, v in value.items()}
+        return {k: placeholder(k, v) for k, v in value.items()}
     if isinstance(value, list):
         return [drop_times(v) for v in value]
     return value
@@ -74,7 +85,6 @@ def normalize(value: Any, lab: Lab | None = None) -> Any:
         for f in lab.fakes:
             text = text.replace(f.url, f"http://{f.name}")
         text = text.replace(lab.root, "<LAB>")
-    text = re.sub(r"\b(1\.2\.1|2\.\d+\.\d+)\b", "<VERSION>", text)
     return json.loads(text)
 
 

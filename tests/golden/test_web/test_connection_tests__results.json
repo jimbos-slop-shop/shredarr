@@ -1,0 +1,66 @@
+{
+  "deluge": {
+    "msg": "Deluge 2.1.1",
+    "ok": true
+  },
+  "deluge-bad": {
+    "msg": "wrong password",
+    "ok": false
+  },
+  "empty": {
+    "msg": "no address set",
+    "ok": false
+  },
+  "jellyfin": {
+    "msg": "Jellyfin 10.11.0 \u00b7 Lab",
+    "ok": true
+  },
+  "jellyfin-bad": {
+    "msg": "HTTP 401: check the API key",
+    "ok": false
+  },
+  "plex": {
+    "msg": "Plex 1.42.1.10060 \u00b7 Lab Plex",
+    "ok": true
+  },
+  "prowlarr": {
+    "msg": "Prowlarr 2.0.5.5160",
+    "ok": true
+  },
+  "qbittorrent": {
+    "msg": "qBittorrent v5.1.2",
+    "ok": true
+  },
+  "qbittorrent-bad": {
+    "msg": "HTTP 403: check the API key",
+    "ok": false
+  },
+  "radarr-4k": {
+    "msg": "Radarr 5.26.2.10099",
+    "ok": true
+  },
+  "radarr-bad-key": {
+    "msg": "HTTP 401: check the API key",
+    "ok": false
+  },
+  "seerr": {
+    "msg": "Seerr 2.7.3",
+    "ok": true
+  },
+  "sonarr": {
+    "msg": "Sonarr 4.0.15.2941",
+    "ok": true
+  },
+  "sonarr-down": {
+    "msg": "Connection refused",
+    "ok": false
+  },
+  "transmission": {
+    "msg": "Transmission 4.0.6 (38c164933e)",
+    "ok": true
+  },
+  "unknown": {
+    "msg": "unknown service",
+    "ok": false
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "GenericOptions": [
+    {
+      "EnableAlbums": false,
+      "EnableEpisodes": true,
+      "EnableMovies": true,
+      "EnableSeasons": true,
+      "EnableSeries": true,
+      "EnableSongs": false,
+      "EnableVideos": true,
+      "EnableWebhook": true,
+      "Fields": [],
+      "Headers": [
+        {
+          "Key": "X-Webhook-Token",
+          "Value": "lab-webhook-token"
+        }
+      ],
+      "NotificationTypes": [
+        "ItemDeleted"
+      ],
+      "SendAllProperties": false,
+      "SkipEmptyMessageBody": false,
+      "Template": "ewogICJub3RpZmljYXRpb25fdHlwZSI6ICJ7e2pzb25fZW5jb2RlIE5vdGlmaWNhdGlvblR5cGV9fSIsCiAgIml0ZW1fdHlwZSI6ICJ7e2pzb25fZW5jb2RlIEl0ZW1UeXBlfX0iLAogICJpdGVtX2lkIjogInt7anNvbl9lbmNvZGUgSXRlbUlkfX0iLAogICJuYW1lIjogInt7anNvbl9lbmNvZGUgTmFtZX19IiwKICAicGF0aCI6IG51bGwsCiAgInRtZGJfaWQiOiB7eyNpZl9leGlzdCBQcm92aWRlcl90bWRifX17e1Byb3ZpZGVyX3RtZGJ9fXt7ZWxzZX19bnVsbHt7L2lmX2V4aXN0fX0sCiAgInR2ZGJfaWQiOiB7eyNpZl9leGlzdCBQcm92aWRlcl90dmRifX17e1Byb3ZpZGVyX3R2ZGJ9fXt7ZWxzZX19bnVsbHt7L2lmX2V4aXN0fX0sCiAgImltZGJfaWQiOiB7eyNpZl9leGlzdCBQcm92aWRlcl9pbWRifX0ie3tqc29uX2VuY29kZSBQcm92aWRlcl9pbWRifX0ie3tlbHNlfX1udWxse3svaWZfZXhpc3R9fSwKICAic2VyaWVzX25hbWUiOiB7eyNpZl9leGlzdCBTZXJpZXNOYW1lfX0ie3tqc29uX2VuY29kZSBTZXJpZXNOYW1lfX0ie3tlbHNlfX1udWxse3svaWZfZXhpc3R9fSwKICAic2VyaWVzX2lkIjoge3sjaWZfZXhpc3QgU2VyaWVzSWR9fSJ7e2pzb25fZW5jb2RlIFNlcmllc0lkfX0ie3tlbHNlfX1udWxse3svaWZfZXhpc3R9fSwKICAic2Vhc29uX251bWJlciI6IHt7I2lmX2V4aXN0IFNlYXNvbk51bWJlcn19e3tTZWFzb25OdW1iZXJ9fXt7ZWxzZX19bnVsbHt7L2lmX2V4aXN0fX0sCiAgImVwaXNvZGVfbnVtYmVyIjoge3sjaWZfZXhpc3QgRXBpc29kZU51bWJlcn19e3tFcGlzb2RlTnVtYmVyfX17e2Vsc2V9fW51bGx7ey9pZl9leGlzdH19LAogICJlcGlzb2RlX2VuZF9udW1iZXIiOiB7eyNpZl9leGlzdCBFcGlzb2RlTnVtYmVyRW5kfX17e0VwaXNvZGVOdW1iZXJFbmR9fXt7ZWxzZX19bnVsbHt7L2lmX2V4aXN0fX0sCiAgIm9jY3VycmVkX2F0IjogInt7anNvbl9lbmNvZGUgVXRjVGltZXN0YW1wfX0iCn0=",
+      "TrimWhitespace": false,
+      "UserFilter": [],
+      "WebhookName": "Shredarr",
+      "WebhookUri": "http://shredarr:8089/webhook/jellyfin"
+    }
+  ],
+  "ServerUrl": ""
+}

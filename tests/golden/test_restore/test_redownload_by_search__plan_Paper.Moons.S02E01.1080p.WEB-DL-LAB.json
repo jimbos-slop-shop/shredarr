@@ -1,0 +1,17 @@
+{
+  "app": "sonarr",
+  "same_available": false,
+  "steps": {
+    "same": [
+      "Put 'Paper Moons' back in Sonarr if it was removed, and monitor S02E01",
+      "Add the original torrent back to Transmission (Paper.Moons.S02E01.1080p.WEB-DL-LAB), so the same release downloads again",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ],
+    "search": [
+      "Put 'Paper Moons' back in Sonarr if it was removed, and monitor S02E01",
+      "Have Sonarr search for S02E01 (whole seasons as season packs)",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ]
+  },
+  "what": "'Paper Moons' S02E01"
+}

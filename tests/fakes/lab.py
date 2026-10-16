@@ -104,6 +104,7 @@ class Lab:
         self.releases: dict[str, dict[str, Any]] = {}  # hash -> what Sonarr/Radarr would import it as
         self.torrents: dict[str, Torrent] = {}
         self.gone: dict[str, dict[str, Any]] = {}  # removed torrents, so a re-added .torrent can download again
+        self.auto_import = True
         self.movie_refs: dict[int, MovieRef] = {}
         self.series_refs: dict[int, SeriesRef] = {}
         self.sonarr = FakeSonarr(self, self.tv, "sonarr-key")
@@ -229,6 +230,10 @@ class Lab:
         t: Torrent = old["torrent"]
         t.category, t.ratio, t.seeding_time, t.added_on = category or t.category, 0.0, 0, int(time.time())
         self.torrents[h] = t
+        if self.auto_import:  # Sonarr/Radarr's completed download handling imports finished downloads on their own
+            release = self.releases.get(h) or {}
+            arr = self.radarr if release.get("kind") == "movie" else self.sonarr
+            arr.import_download(t.disk_path, h)
         return t
 
     # ------------------------------------------------------------------ movies

@@ -1,0 +1,31 @@
+{
+  "extra_arrs": [
+    {
+      "api_key": "k4",
+      "key": "radarr-4k",
+      "kind": "radarr",
+      "name": "Radarr 4K",
+      "url": "http://radarr4k:7878/api/v3"
+    },
+    {
+      "api_key": "k5",
+      "key": "radarr-4k-2",
+      "kind": "radarr",
+      "name": "Radarr 4K",
+      "url": "http://other:7878/api/v3"
+    }
+  ],
+  "has_seerr": false,
+  "plex": {
+    "api_key": "t",
+    "url": "http://plex:32400"
+  },
+  "radarr": {
+    "api_key": "new-key",
+    "url": "http://radarr/api/v3"
+  },
+  "sonarr": {
+    "api_key": "sonarr-key",
+    "url": "http://sonarr/api/v3"
+  }
+}

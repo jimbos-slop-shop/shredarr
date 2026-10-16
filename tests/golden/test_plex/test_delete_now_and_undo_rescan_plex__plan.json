@@ -1,0 +1,11 @@
+{
+  "dry_run": false,
+  "name": "Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB",
+  "notes": [],
+  "steps": [
+    "Remove 'Big Buck Bunny' from Radarr, with its files (and add an import exclusion)",
+    "Remove 'Big Buck Bunny' from Seerr",
+    "Rescan Plex so it drops the deleted files",
+    "Delete torrent 'Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB' and its downloaded data from qBittorrent"
+  ]
+}

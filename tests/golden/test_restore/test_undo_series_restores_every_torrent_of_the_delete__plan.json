@@ -1,0 +1,10 @@
+{
+  "count": 2,
+  "name": "Harbor Lights",
+  "problem": null,
+  "steps": [
+    "Re-add 'Harbor Lights' to Sonarr with its previous settings and monitoring",
+    "Have Sonarr re-import the files from these torrents's download, so it's back in your library and Jellyfin",
+    "Take these torrents off the cleanup list. They keep seeding as normal"
+  ]
+}
