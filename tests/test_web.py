@@ -310,3 +310,12 @@ def test_a_proxy_on_the_same_machine_still_needs_sign_in(lab: Lab, start: StartF
         assert c.get("/api/torrents").status_code == 200
         for header in ("X-Forwarded-For", "X-Real-IP", "Forwarded"):
             assert c.get("/api/torrents", headers={header: "203.0.113.9"}).status_code == 401
+
+
+def test_webhook_without_a_token_is_refused(lab: Lab, start: StartFn) -> None:
+    s = start()
+    assert s.webhook({"notification_type": "ItemDeleted"}, token="wrong").status_code == 401
+    conf = s.read_config()
+    del conf["webhook_token"]  # removed by hand while Shredarr runs
+    s.write_config(conf)
+    assert s.webhook({"notification_type": "ItemDeleted"}, token=None).status_code == 401

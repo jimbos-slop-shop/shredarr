@@ -76,8 +76,8 @@ def create_app(core: Shredarr, *, start: bool = True) -> FastAPI:
     @app.post(WEBHOOK + "{rest:path}")
     async def jellyfin_webhook(request: Request) -> Response:
         """Jellyfin's Webhook plugin authenticates with the shared token, not a session."""
-        token = core.config.load().get("webhook_token")
-        if token and not hmac.compare_digest(request.headers.get("X-Webhook-Token", ""), token):
+        token = core.config.load().get("webhook_token")  # made on start; refused if someone removed it since
+        if not token or not hmac.compare_digest(request.headers.get("X-Webhook-Token", ""), token):
             return text("bad token", 401)
         try:
             core.events.put(json.loads(await request.body()))
