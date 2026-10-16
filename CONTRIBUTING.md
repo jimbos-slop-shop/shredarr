@@ -25,8 +25,8 @@ src/shredarr/
   config.py        config.json: everything set up in the web UI, with defaults (a read-only Config view + ConfigStore)
   db.py            state.db: connections and versioned schema migrations
   repositories.py  one class per table: the cleanup queue, per-torrent rules, History, sessions, the activity log
-  files.py         files on disk: videos, RAR volumes, inodes, path mappings
-  text.py          how things are written for people: sizes, durations, episode ranges, rules
+  files.py         files on disk: walking folders, inodes, path mappings
+  text.py          how things are written for people: sizes, durations, episode ranges
   app.py           everything wired together, plus the background workers
   clients/         the apps Shredarr talks to; they raise ServiceError and nothing else
     servarr.py       Sonarr, Radarr, Prowlarr
@@ -36,9 +36,11 @@ src/shredarr/
     deletes.py       media deleted in Jellyfin (webhook) or Plex (noticed on disk) → Sonarr/Radarr/Seerr, queue torrents
     cleanup.py       the sweep: delete queued torrents once they're out of the library and their rule is met
     library.py       which torrent each library file came from (inodes, Sonarr/Radarr import history), cross-seeds
-    rules.py         seeding rules
+    rules.py         seeding rules, and how a rule is described
+    media_files.py   which files are media: videos to import, RAR archives to unpack
     delete_now.py, orphans.py, removal.py   Delete now and the No torrent tab
-    restore.py       Undo; redownload.py: History → Redownload
+    restore.py       putting media back in Sonarr/Radarr; undo.py: Undo; redownload.py: History → Redownload
+    suppressions.py  deletes Shredarr made itself, so the media server's report of them is ignored
     watcher.py       the Plex library watch
     media_server.py  rescans, for Jellyfin and Plex behind one interface
     auth.py, notifications.py, health.py, dashboard.py, settings_editor.py, webhook_setup.py, ...

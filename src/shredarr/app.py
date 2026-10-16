@@ -20,7 +20,7 @@ from .services.cleanup import Cleaner
 from .services.connections import Connections
 from .services.dashboard import Dashboard
 from .services.delete_now import DeleteNow
-from .services.deletes import MediaDeletes, Suppressions
+from .services.deletes import MediaDeletes
 from .services.health import Health, Updates
 from .services.library import Library
 from .services.notifications import Notifier
@@ -28,10 +28,12 @@ from .services.orphans import Orphans
 from .services.queue import CleanupQueue
 from .services.redownload import Redownloader
 from .services.removal import MediaRemoval
-from .services.restore import Restorer, Undo
+from .services.restore import Restorer
 from .services.saved_torrents import SavedTorrents
 from .services.settings_editor import SettingsEditor
+from .services.suppressions import Suppressions
 from .services.trackers import Trackers
+from .services.undo import Undo
 from .services.watcher import LibraryWatcher
 from .services.webhook_setup import WebhookSetup
 from .settings import Settings

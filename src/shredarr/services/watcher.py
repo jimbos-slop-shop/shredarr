@@ -11,9 +11,9 @@ from collections.abc import Callable
 from ..config import JSON
 from ..files import file_key
 from .activity import Activity
-from .deletes import Suppressions
 from .library import Library
 from .media_files import videos_in
+from .suppressions import Suppressions
 
 MASS_VANISH = (20, 0.2)  # more files than this, and more than this share of them, gone at once: a disk went offline
 

@@ -12,8 +12,8 @@ from ..config import JSON, Config
 from ..text import episodes_label, tail
 from .activity import Activity
 from .connections import Connections
-from .deletes import Suppressions
 from .media_server import media_server
+from .suppressions import Suppressions
 
 
 @dataclass

@@ -15,11 +15,11 @@ from ..text import episodes_label, human
 from .activity import Activity
 from .cleanup import Cleaner
 from .connections import Connections
-from .deletes import Suppressions
 from .library import Library
 from .media_server import media_server
 from .notifications import Notifier
 from .removal import MediaRemoval, Step, run_steps
+from .suppressions import Suppressions
 from .trackers import tracker_host
 
 

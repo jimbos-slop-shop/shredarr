@@ -13,11 +13,11 @@ from ..repositories import HistoryRepo
 from ..text import episodes_label, human
 from .activity import Activity
 from .connections import Connections
-from .deletes import Suppressions
 from .library import Library
 from .notifications import Notifier
 from .removal import MediaRemoval, Step, run_steps
 from .snapshots import movie_settings, season_monitoring, series_settings
+from .suppressions import Suppressions
 
 Done = tuple[str, int, JSON]  # (label, bytes freed, what Redownload needs)
 
