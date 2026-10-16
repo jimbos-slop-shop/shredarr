@@ -137,6 +137,8 @@ them (qBittorrent also gets *same release*).
 
 ## Settings at a glance
 
+Settings has a menu on the left (a row of tabs on phones) and shows one section at a time.
+
 | Section | What it does |
 |---|---|
 | Connections | App addresses and keys (Seerr and Prowlarr are optional), connection status, Jellyfin webhook setup, path mappings |

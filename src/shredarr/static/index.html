@@ -83,8 +83,10 @@
 <section class="panel spage" id="spage" hidden>
 <div class="panel-h"><h2><span class="ic blue"><svg class="i"><use href="#i-gear"/></svg></span>Settings</h2></div>
 <div class="settings">
+<nav class="snav" id="snav" aria-label="Settings sections"></nav>
+<div class="spanes">
 
-<section class="sbox wide" id="connbox"><h3><span class="ic blue"><svg class="i"><use href="#i-plug"/></svg></span>Connections</h3>
+<section class="sbox" id="s-connections" data-group="Apps"><h3><span class="ic blue"><svg class="i"><use href="#i-plug"/></svg></span>Connections</h3>
 <p class="help">How Shredarr reaches your apps. Use the addresses Shredarr's container can reach, for example <code>http://sonarr:8989</code> on a shared Docker network. Leave a key blank to keep the saved one.</p>
 <form id="cform"><div class="conns">
   <div class="conn" data-svc="sonarr"><div class="conn-h"><i class="dot"></i><b>Sonarr</b><small class="cstate"></small></div>
@@ -133,15 +135,7 @@
   <div class="btnrow"><button type="button" id="addmap"><svg class="i"><use href="#i-plus"/></svg>Add mapping</button><button class="p">Save mappings</button></div></form></div>
 </section>
 
-<section class="sbox wide"><h3><span class="ic violet"><svg class="i"><use href="#i-list"/></svg></span>Seeding rules</h3>
-<p class="help">Give some torrents a different rule than the default. The first rule that matches wins, in this order: a torrent's own rule, then <b>show or movie</b>, then <b>tracker</b>, then <b>category</b>, then the default rule on the dashboard. "Never delete" protects matching torrents.</p>
-<p class="help">A <b>tracker</b> rule matches the tracker's name (for example <i>TorrentDay</i>, as Sonarr/Radarr and Prowlarr call it), which covers all of its announce addresses, or one announce host.</p>
-<form id="lform"><div class="rlist" id="rlist"></div>
-<datalist id="dl-category"></datalist><datalist id="dl-title"></datalist><datalist id="dl-tracker"></datalist>
-<div class="btnrow"><button type="button" id="addrule"><svg class="i"><use href="#i-plus"/></svg>Add rule</button><button class="p">Save rules</button></div></form>
-</section>
-
-<section class="sbox notif"><h3><span class="ic blue"><svg class="i"><use href="#i-bell"/></svg></span>Notifications</h3>
+<section class="sbox" id="s-notifications" data-group="Apps"><h3><span class="ic blue"><svg class="i"><use href="#i-bell"/></svg></span>Notifications</h3>
 <p class="help">Set up any of these services. Leave the ones you don't use blank.</p>
 <form id="nform">
 <div class="svc"><div class="svc-h">Discord</div>
@@ -167,8 +161,15 @@
 <div class="btnrow"><button type="button" id="ntest"><svg class="i"><use href="#i-send"/></svg>Send test</button><button class="p"><svg class="i"><use href="#i-check"/></svg>Save</button></div>
 </form></section>
 
-<div class="scol">
-<section class="sbox"><h3><span class="ic blue"><svg class="i"><use href="#i-broom"/></svg></span>Cleanup behavior</h3>
+<section class="sbox" id="s-rules" data-group="Cleanup"><h3><span class="ic violet"><svg class="i"><use href="#i-list"/></svg></span>Seeding rules</h3>
+<p class="help">Give some torrents a different rule than the default. The first rule that matches wins, in this order: a torrent's own rule, then <b>show or movie</b>, then <b>tracker</b>, then <b>category</b>, then the default rule on the dashboard. "Never delete" protects matching torrents.</p>
+<p class="help">A <b>tracker</b> rule matches the tracker's name (for example <i>TorrentDay</i>, as Sonarr/Radarr and Prowlarr call it), which covers all of its announce addresses, or one announce host.</p>
+<form id="lform"><div class="rlist" id="rlist"></div>
+<datalist id="dl-category"></datalist><datalist id="dl-title"></datalist><datalist id="dl-tracker"></datalist>
+<div class="btnrow"><button type="button" id="addrule"><svg class="i"><use href="#i-plus"/></svg>Add rule</button><button class="p">Save rules</button></div></form>
+</section>
+
+<section class="sbox" id="s-behavior" data-group="Cleanup"><h3><span class="ic blue"><svg class="i"><use href="#i-broom"/></svg></span>Cleanup behavior</h3>
 <p class="help">What Shredarr does in Sonarr, Radarr and Seerr when you delete something in your media server.</p>
 <form id="bform">
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Add an import exclusion" name="import_exclusion"><span><b>Add an import exclusion</b><small>When a movie or show is removed, stop import lists from adding it back.</small></span></div>
@@ -178,21 +179,21 @@
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Delete cross-seeds together with the original" name="cross_seed_with_original"><span><b>Delete cross-seeds together with the original</b><small>Cross-seeds (the same release seeding from other trackers) are always cleaned up with the original. When this is off, each one first waits for its own tracker's seeding rule.</small></span></div>
 </form></section>
 
-<section class="sbox"><h3><span class="ic green"><svg class="i"><use href="#i-clock"/></svg></span>Deletion delay</h3>
+<section class="sbox" id="s-delay" data-group="Cleanup"><h3><span class="ic green"><svg class="i"><use href="#i-clock"/></svg></span>Deletion delay</h3>
 <p class="help">After you delete something in your media server, Shredarr can hold on to its torrent for a while before removing it, even once the seeding rule is met. That gives you time to <b>Undo</b> a delete you didn't mean.</p>
 <form id="gform">
 <div class="field"><label for="f-gv">Wait</label><div><div class="dur"><input id="f-gv" name="value" type="number" min="0" step="any"><select name="unit"><option value="hours">hours</option><option value="days">days</option></select></div>
 <small id="g-help">0 means no delay: the torrent is removed as soon as its seeding rule is met.</small></div></div>
 <div class="btnrow"><button class="p"><svg class="i"><use href="#i-check"/></svg>Save</button></div></form></section>
 
-<section class="sbox"><h3><span class="ic amber"><svg class="i"><use href="#i-disk"/></svg></span>Low disk space</h3>
+<section class="sbox" id="s-low-space" data-group="Cleanup"><h3><span class="ic amber"><svg class="i"><use href="#i-disk"/></svg></span>Low disk space</h3>
 <p class="help">When the downloads disk runs low, delete waiting torrents early (oldest first) even if their seeding rule isn't met yet. Torrents still in your library, protected, or in their deletion delay are never touched.</p>
 <form id="sform">
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Free up space automatically" name="enabled"><span><b>Free up space automatically</b><small id="free-now"></small></span></div>
 <div class="field"><label for="f-sg">Keep at least</label><div><div class="dur"><input id="f-sg" name="min_free_gb" type="number" min="1" step="any"><span class="unit">GB free</span></div></div></div>
 <div class="btnrow"><button class="p"><svg class="i"><use href="#i-check"/></svg>Save</button></div></form></section>
 
-<section class="sbox"><h3><span class="ic amber"><svg class="i"><use href="#i-box"/></svg></span>RAR restore</h3>
+<section class="sbox" id="s-rar" data-group="Restore"><h3><span class="ic amber"><svg class="i"><use href="#i-box"/></svg></span>RAR restore</h3>
 <p class="help">Some releases come as RAR archives. If you delete one and then press <b>Undo</b>, Shredarr unpacks the archive again and hands the video back to Sonarr/Radarr.</p>
 <form id="rform">
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Restore RAR releases with Undo" name="enabled"><span><b>Restore RAR releases with Undo</b><small>Shredarr unpacks the archive with its built-in unpacker. The torrent's files are only read, never changed.</small></span></div>
@@ -200,7 +201,7 @@
 <div class="btnrow"><button type="button" id="rcheck"><svg class="i"><use href="#i-check"/></svg>Check setup</button></div>
 </form></section>
 
-<section class="sbox"><h3><span class="ic blue"><svg class="i"><use href="#i-refresh"/></svg></span>Saved .torrent files</h3>
+<section class="sbox" id="s-torrents" data-group="Restore"><h3><span class="ic blue"><svg class="i"><use href="#i-refresh"/></svg></span>Saved .torrent files</h3>
 <p class="help">When Shredarr deletes a torrent for good, it keeps a copy of its .torrent file, so <b>History → Redownload</b> can add the same release back. Once that copy is removed, the same release can't be brought back through Shredarr: Redownload can only have Sonarr/Radarr search for a new one.</p>
 <form id="tform">
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Save .torrent files for Redownload" name="enabled"><span><b>Save .torrent files for Redownload</b><small id="t-on-help"></small></span></div>
@@ -208,7 +209,7 @@
 <small id="t-help"></small></div></div>
 <div class="btnrow"><button type="button" class="danger" id="tdel"><svg class="i"><use href="#i-trash"/></svg>Delete all now</button><button class="p"><svg class="i"><use href="#i-check"/></svg>Save</button></div></form></section>
 
-<section class="sbox"><h3><span class="ic violet"><svg class="i"><use href="#i-lock"/></svg></span>Password</h3>
+<section class="sbox" id="s-password" data-group="Shredarr"><h3><span class="ic violet"><svg class="i"><use href="#i-lock"/></svg></span>Password</h3>
 <form id="pform">
 <div class="field"><label for="f-pc">Current</label><div><input id="f-pc" type="password" name="current" autocomplete="current-password" required></div></div>
 <div class="field"><label for="f-pn">New</label><div><input id="f-pn" type="password" name="new" autocomplete="new-password" required><small id="pol-text"></small></div></div>
@@ -223,10 +224,11 @@
 <p class="help" style="margin:14px 0 0">Forgot it? Use <b>Forgot password?</b> on the sign-in page to get a one-time reset code.</p>
 <div class="btnrow" style="margin-top:14px;border-top:1px solid var(--line2);padding-top:14px"><button type="button" id="logoutall"><svg class="i"><use href="#i-logout"/></svg>Sign out everywhere</button></div></section>
 
-<section class="sbox"><h3><span class="ic green"><svg class="i"><use href="#i-info"/></svg></span>About</h3>
+<section class="sbox" id="s-about" data-group="Shredarr"><h3><span class="ic green"><svg class="i"><use href="#i-info"/></svg></span>About</h3>
 <p class="help" id="about-ver"></p>
 <form id="uform"><div class="sw-row"><input type="checkbox" class="sw" aria-label="Check for updates" name="enabled"><span><b>Check for updates</b><small>Looks for a newer release on GitHub twice a day. Nothing else is sent.</small></span></div></form>
 </section>
+
 </div>
 </div>
 </section>

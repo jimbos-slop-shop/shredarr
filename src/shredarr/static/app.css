@@ -998,14 +998,80 @@ button.undo svg.i {
 .settings {
   padding: 18px 20px 22px;
   display: grid;
-  grid-template-columns: 1.25fr 1fr;
-  gap: 18px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 22px;
   align-items: start;
 }
-.scol {
+
+/* settings nav: one section at a time */
+.snav {
+  position: sticky;
+  top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 2px;
+}
+.snav .sg {
+  padding: 14px 10px 6px;
+  color: var(--mut);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.snav .sg:first-child {
+  padding-top: 2px;
+}
+.snav button {
+  height: auto;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  box-shadow: none;
+  color: var(--fg2);
+  font-size: 14px;
+  text-align: left;
+}
+.snav button:hover {
+  background: var(--panel2);
+  color: var(--fg);
+}
+.snav button.on {
+  background: var(--brand-weak);
+  color: var(--brand);
+}
+.snav button .ic {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+.snav button .ic svg.i {
+  width: 15px;
+  height: 15px;
+}
+.snav button span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.snav button.warn::after {
+  content: "";
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bad);
+  box-shadow: 0 0 0 3px var(--bad-weak);
+}
+.spanes {
+  min-width: 0;
 }
 .sbox {
   border: 1px solid var(--line2);
@@ -1804,24 +1870,54 @@ dialog .btns {
   }
   .settings {
     grid-template-columns: 1fr;
+    gap: 12px;
     padding: 12px;
+  }
+  .snav {
+    top: 0;
+    z-index: 5;
+    flex-direction: row;
+    gap: 6px;
+    margin: -12px -12px 0;
+    padding: 10px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line2);
+  }
+  .snav::-webkit-scrollbar {
+    display: none;
+  }
+  .snav .sg {
+    display: none;
+  }
+  .snav button {
+    width: auto;
+    flex: none;
+    padding: 6px 12px 6px 6px;
+    border: 1px solid var(--line2);
+    border-radius: 999px;
+    font-size: 13.5px;
+  }
+  .snav button.on {
+    border-color: transparent;
+  }
+  .snav button .ic {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+  }
+  .snav button.warn::after {
+    margin-left: 2px;
   }
   .sbox {
     padding: 14px;
   }
-  .sbox > h3,
   .svc > .svc-h {
     cursor: pointer;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
-  .sbox > h3 {
-    margin: 0;
-  }
-  .sbox:not(.collapsed) > h3 {
-    margin-bottom: 6px;
-  }
-  .sbox > h3::after,
   .svc > .svc-h::after {
     content: "";
     margin-left: auto;
@@ -1839,17 +1935,11 @@ dialog .btns {
     min-height: 30px;
     margin-bottom: 0;
   }
-  .sbox.collapsed > h3::after,
   .svc.collapsed > .svc-h::after {
     transform: rotate(-45deg);
   }
-  .sbox.collapsed > :not(h3),
   .svc.collapsed > :not(.svc-h) {
     display: none !important;
-  }
-  .sbox.collapsed {
-    padding-top: 12px;
-    padding-bottom: 12px;
   }
   .field {
     grid-template-columns: 1fr;
@@ -2014,10 +2104,7 @@ td.n > input.selbox {
   font-weight: 600;
 }
 
-/* settings: wide boxes, connections, rule + mapping rows */
-.sbox.wide {
-  grid-column: 1 / -1;
-}
+/* settings: connections, rule + mapping rows */
 .sbox.needs {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 55%, transparent);
 }
