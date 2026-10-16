@@ -283,9 +283,12 @@ class ConfigStore:
         with self._lock:
             os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
             tmp = self.path + ".tmp"
-            with open(tmp, "w") as f:
+            fd = os.open(
+                tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+            )  # never readable by others, not even briefly
+            os.fchmod(fd, 0o600)  # a .tmp left over from before keeps its old mode otherwise
+            with os.fdopen(fd, "w") as f:
                 json.dump(raw, f, indent=2)
-            os.chmod(tmp, 0o600)
             os.replace(tmp, self.path)
 
     def update(self, change: Callable[[JSON], None]) -> Config:

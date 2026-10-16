@@ -35,8 +35,10 @@ class SavedTorrents:
 
     def save(self, h: str, data: bytes) -> None:
         os.makedirs(self.folder, exist_ok=True)
-        with open(self.path(h), "wb") as f:
+        tmp = self.path(h) + ".tmp"  # written in full first: a cut-off .torrent would look like a saved one
+        with open(tmp, "wb") as f:
             f.write(data)
+        os.replace(tmp, self.path(h))
 
     def files(self) -> list[str]:
         return sorted(glob.glob(os.path.join(glob.escape(self.folder), "*.torrent")))

@@ -4,6 +4,8 @@ update checks, and the torrent client's sign-in retry."""
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -202,3 +204,23 @@ def test_config_is_reread_when_it_changes(core: Shredarr) -> None:
         json.dump({"dry_run": False}, f)
     time.sleep(0.01)
     assert core.config.load().dry_run is False
+
+
+def test_config_file_is_private_from_the_start(core: Shredarr) -> None:
+    with open(core.config.path + ".tmp", "w") as f:  # left over from an earlier save, with the default mode
+        f.write("{}")
+    os.chmod(core.config.path + ".tmp", 0o644)
+    core.config.save({"dry_run": True})
+    assert os.stat(core.config.path).st_mode & 0o777 == 0o600
+
+
+def test_migration_finishes_a_step_that_was_cut_off(core: Shredarr) -> None:
+    """A 1.x database where the log.level column was added but the version number wasn't saved."""
+    core.db.migrate()
+    con = sqlite3.connect(core.settings.db_path)
+    con.execute("pragma user_version = 1")
+    con.close()
+    core.db.migrate()
+    con = sqlite3.connect(core.settings.db_path)
+    assert con.execute("pragma user_version").fetchone() == (2,)
+    con.close()
