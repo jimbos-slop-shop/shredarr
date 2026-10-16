@@ -16,11 +16,12 @@ from ..clients.base import ServiceError, refuse_if_read_only
 from ..clients.servarr import ArrClient, RadarrClient, SonarrClient
 from ..clients.torrents import Torrent
 from ..config import JSON, ConfigStore
-from ..files import files_under, first_rar_volumes, restorable, videos_in
+from ..files import files_under
 from ..repositories import PendingRepo
 from .activity import Activity
 from .connections import Connections
 from .library import Library
+from .media_files import first_rar_volumes, restorable, videos_in
 from .media_server import media_server
 from .notifications import Notifier
 

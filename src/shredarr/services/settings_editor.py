@@ -24,8 +24,9 @@ from ..config import (
     kind_of,
 )
 from ..repositories import OverridesRepo
-from ..text import plural, rule_text
+from ..text import plural
 from .activity import Activity
+from .rules import rule_text
 from .saved_torrents import retention_text
 
 

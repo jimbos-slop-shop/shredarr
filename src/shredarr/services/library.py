@@ -22,8 +22,9 @@ from ..clients.base import ServiceError
 from ..clients.servarr import DOWNLOAD_FOLDER_IMPORTED, SonarrClient
 from ..clients.torrents import Torrent
 from ..config import ARR_KINDS, JSON
-from ..files import FileKey, file_key, files_under, videos_in
+from ..files import FileKey, file_key, files_under
 from .connections import Connections
+from .media_files import videos_in
 
 log = logging.getLogger(__name__)
 

@@ -8,12 +8,12 @@ import shutil
 from ..clients.base import ServiceError, read_only
 from ..clients.torrents import Torrent
 from ..config import JSON, MODES, SECRET_KEYS, SERVICES, ConfigStore, base_url
-from ..files import restorable
 from ..repositories import HistoryRepo, OverridesRepo, PendingRepo
 from .cleanup import Cleaner, free_gb
 from .connections import Connections
 from .health import Health, Updates
 from .library import Library
+from .media_files import restorable
 from .rules import evaluate, met_parts
 from .saved_torrents import SavedTorrents
 from .trackers import Trackers, tracker_host
