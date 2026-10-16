@@ -17,7 +17,7 @@ from .connections import Connections
 from .deletes import Suppressions
 from .library import Library
 from .notifications import Notifier
-from .removal import MediaRemoval, Step
+from .removal import MediaRemoval, Step, run_steps
 from .snapshots import movie_settings, season_monitoring, series_settings
 
 Done = tuple[str, int, JSON]  # (label, bytes freed, what Redownload needs)
@@ -169,16 +169,7 @@ class Orphans:
         if not c.dry_run:
             self.suppressions.add_paths(paths)
         self.activity.info(f"Delete media with no torrent: {', '.join(x[0] for x in done) or 'nothing left to delete'}")
-        for step in steps:
-            if c.dry_run:
-                self.activity.info(f"  [dry run] would: {step.desc}")
-                continue
-            try:
-                if step.run:
-                    step.run()
-                self.activity.info(f"  done: {step.desc}")
-            except Exception as e:  # one failed step shouldn't stop the others
-                self.activity.error(f"  FAILED: {step.desc}: {e}")
+        run_steps(steps, c.dry_run, self.activity)
         if not c.dry_run and done:
             for label, size, restore in done:
                 self.history.add(

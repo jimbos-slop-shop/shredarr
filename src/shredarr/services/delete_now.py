@@ -19,7 +19,7 @@ from .deletes import Suppressions
 from .library import Library
 from .media_server import media_server
 from .notifications import Notifier
-from .removal import MediaRemoval, Step
+from .removal import MediaRemoval, Step, run_steps
 from .trackers import tracker_host
 
 
@@ -175,17 +175,7 @@ class DeleteNow:
         )
         if not c.dry_run:
             self.suppressions.add_paths(plan.paths)
-        for step in plan.steps:
-            if step.run is None:
-                self.activity.info(f"  {step.desc}")
-            elif c.dry_run:
-                self.activity.info(f"  [dry run] would: {step.desc}")
-            else:
-                try:
-                    step.run()
-                    self.activity.info(f"  done: {step.desc}")
-                except Exception as e:  # one failed step shouldn't stop the others
-                    self.activity.error(f"  FAILED: {step.desc}: {e}")
+        run_steps(plan.steps, c.dry_run, self.activity)
         if c.dry_run:
             return None
         self.pending.remove(*(plan.group or [h]))
