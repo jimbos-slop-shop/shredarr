@@ -67,11 +67,10 @@ class DeleteNow:
         group = sorted(
             self.library.cross_seed_groups(list(ts.values()), 0).get(h, {h}) if t else {h}, key=lambda x: x != h
         )
-        imap = self.library.imports(0)
+        imap, owner = self.library.import_maps(0)
         imps = [i for x in group for i in imap.get(x, [])]
         keys = set().union(*[self.library.torrent_keys(ts[x]) for x in group if x in ts])
         idx = self.library.index(0)
-        owner = self.library.import_owner(0)
         paths = {p for k, p in idx.items() if k in keys} | {
             i["path"] for i in imps if i["path"] and owner.get(i["path"]) in group and os.path.exists(i["path"])
         }

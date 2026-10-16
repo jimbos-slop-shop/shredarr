@@ -260,20 +260,24 @@ class Redownloader:
     def check(self) -> None:
         """Re-added torrents are normally imported by Sonarr/Radarr on their own. If one has finished but still isn't
         in the library after a while, nudge the import (or unpack a RAR release first)."""
-        for r in self.redownloads.open():
-            t = self.connections.torrents.get(r.hash)
+        rows = self.redownloads.open()
+        if not rows:
+            return
+        ts = {t["hash"]: t for t in self.connections.torrents.all([r.hash for r in rows])}  # one request for all
+        self.library.forget(roots=False, index=False, groups=False, titles=False)  # import history: read once, fresh
+        for r in rows:
+            t = ts.get(r.hash)
             if not t:
                 if time.time() - r.ts > 3600:
                     self.redownloads.done(r.hash)
                 continue
             self.library.forget_torrent(r.hash)
-            self.library.forget(roots=False, index=False, groups=False, titles=False)
             if self.library.in_library(t):
                 self.redownloads.done(r.hash)
                 media_server(self.connections).rescan(
                     [
                         i["path"]
-                        for i in self.library.imports(0).get(r.hash, [])
+                        for i in self.library.imports(60).get(r.hash, [])
                         if i["path"] and os.path.exists(i["path"])
                     ]
                 )
