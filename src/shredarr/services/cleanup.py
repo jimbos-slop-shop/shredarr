@@ -7,12 +7,13 @@ import logging
 import os
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..clients.torrents import Torrent
 from ..config import JSON, Config, ConfigStore, Rule
-from ..files import file_key, files_under
+from ..files import FileKey, files_under
 from ..repositories import HistoryRepo, OverridesRepo, PendingRepo, RedownloadsRepo
 from ..text import duration, human
 from .activity import Activity
@@ -28,15 +29,62 @@ log = logging.getLogger(__name__)
 Torrents = dict[str, Torrent]
 
 
+class TorrentFiles:
+    """Every torrent's files as (real path, disk identity, size), read from disk once and shared by all the removals
+    in a sweep. Deleting a torrent's data is only safe for files no remaining torrent uses, and without this each
+    removal walked every other torrent's files again."""
+
+    def __init__(self, ts: Torrents) -> None:
+        self.files: dict[str, list[tuple[str, FileKey | None, int]]] = {}
+        self.path_users: Counter[str] = Counter()  # real path -> how many torrents have it
+        self.key_users: Counter[FileKey] = Counter()  # same for disk identities (hardlinks)
+        for h, t in ts.items():
+            out: list[tuple[str, FileKey | None, int]] = []
+            for p in files_under(t["content_path"]):
+                try:
+                    st = os.stat(p)
+                except OSError:  # gone or unreadable: it only counts by path
+                    out.append((os.path.realpath(p), None, 0))
+                    continue
+                out.append((os.path.realpath(p), (st.st_dev, st.st_ino), st.st_size))
+            self.files[h] = out
+            self.path_users.update({real for real, _, _ in out})
+            self.key_users.update({k for _, k, _ in out if k})
+
+    def kept(self, going: list[str]) -> tuple[set[str], set[FileKey]]:
+        """Real paths and disk identities that a torrent which isn't going still uses."""
+        paths, keys = Counter[str](), Counter[FileKey]()
+        for h in going:
+            paths.update({real for real, _, _ in self.files.get(h, [])})
+            keys.update({k for _, k, _ in self.files.get(h, []) if k})
+        return (
+            {p for p, n in paths.items() if self.path_users[p] > n},
+            {k for k, n in keys.items() if self.key_users[k] > n},
+        )
+
+    def drop(self, h: str) -> None:
+        """The torrent was removed: its files no longer keep anything."""
+        out = self.files.pop(h, [])
+        self.path_users.subtract({real for real, _, _ in out})
+        self.key_users.subtract({k for _, k, _ in out if k})
+
+
 @dataclass
 class SweepContext:
-    """What one sweep knows: all torrents, the cross-seed groups, what's queued, and torrents that already went
-    along with another one."""
+    """What one sweep knows: all torrents, the cross-seed groups, what's queued, torrents that already went
+    along with another one, and (once something is deleted) the torrents' files."""
 
     ts: Torrents
     groups: dict[str, set[str]]
     pending: set[str] = field(default_factory=set)
     removed: set[str] = field(default_factory=set)
+    _files: TorrentFiles | None = None
+
+    @property
+    def files(self) -> TorrentFiles:
+        if self._files is None:  # most sweeps delete nothing: only read the disk when one does
+            self._files = TorrentFiles(self.ts)
+        return self._files
 
 
 def free_gb(ts: Torrents) -> float | None:
@@ -139,7 +187,7 @@ class Cleaner:
                     ctx.pending.discard(p.hash)
                 else:
                     self.pending.set_status(p.hash, status)
-            self.low_space_pass(c, ts, ov)
+            self.low_space_pass(c, ctx, ov)
             return True
 
     def check(
@@ -180,7 +228,7 @@ class Cleaner:
                 + (f", with {len(batch) - 1} cross-seed{'s' * (len(batch) > 2)}" if len(batch) > 1 else "")
             )
             return f"[dry run] ready to delete; {progress}"
-        for x, freed, kept in self.cleanup(batch, ts, groups, name, "seeding rule met"):
+        for x, freed, kept in self.cleanup(batch, ts, groups, name, "seeding rule met", ctx.files):
             own = x["hash"] == t["hash"]
             self.activity.info(
                 f"deleted torrent '{x['name']}'"
@@ -216,11 +264,11 @@ class Cleaner:
             )
         return bool(new)
 
-    def low_space_pass(self, c: Config, ts: Torrents, ov: dict[str, Rule]) -> None:
+    def low_space_pass(self, c: Config, ctx: SweepContext, ov: dict[str, Rule]) -> None:
         """Settings → Low disk space: below the minimum, waiting torrents go early (oldest first) even if their seeding
         rule isn't met yet. Torrents that are still in the library, protected, or inside their deletion delay are never
         touched."""
-        ls = c.low_space
+        ls, ts = c.low_space, ctx.ts
         if not ls["enabled"]:
             return
         free = free_gb(ts)
@@ -243,7 +291,7 @@ class Cleaner:
                 f"Low disk space ({free:.0f} GB free, minimum {ls['min_free_gb']:g} GB): deleting '{t['name']}' early"
             )
             [(_, freed, _)] = self.cleanup(
-                [p.hash], ts, self.library.cross_seed_groups(list(ts.values())), p.name, "low disk space"
+                [p.hash], ts, self.library.cross_seed_groups(list(ts.values())), p.name, "low disk space", ctx.files
             )
             self.pending.remove(p.hash)
             self.notifier.notify(
@@ -256,7 +304,13 @@ class Cleaner:
 
     # ------------------------------------------------------------------ deleting torrents
     def cleanup(
-        self, batch: list[str], ts: Torrents, groups: dict[str, set[str]], name: str, reason: str
+        self,
+        batch: list[str],
+        ts: Torrents,
+        groups: dict[str, set[str]],
+        name: str,
+        reason: str,
+        files: TorrentFiles | None = None,
     ) -> list[tuple[Torrent, int, bool]]:
         """Delete these torrents (one, or an original with its cross-seeds), keeping History and Redownload info.
         Returns [(torrent, bytes freed, data kept)]."""
@@ -265,50 +319,42 @@ class Cleaner:
         freed: dict[str, int] = {}
         kept: set[str] = set()
         try:
-            freed, kept = self.remove_torrents([t["hash"] for t, _ in gone], ts)
+            freed, kept = self.remove_torrents([t["hash"] for t, _ in gone], ts, files)
         finally:  # if one of the client calls failed, the torrents that did go still get their History entry
             for t, _ in gone:
                 if t["hash"] not in ts:
                     self.record(t, name, reason, restores[t["hash"]], freed.get(t["hash"]))
         return [(t, freed.get(t["hash"], 0), t["hash"] in kept) for t, _ in gone]
 
-    def remove_torrents(self, hashes: list[str], ts: Torrents) -> tuple[dict[str, int], set[str]]:
+    def remove_torrents(
+        self, hashes: list[str], ts: Torrents, files: TorrentFiles | None = None
+    ) -> tuple[dict[str, int], set[str]]:
         """Delete torrents with their data, except when another torrent that stays still seeds from the same files (a
-        cross-seed sharing the folder): then the torrent goes but the data stays. Removed torrents are taken out of ts.
-        Returns ({hash: bytes freed}, {hashes whose data was kept})."""
+        cross-seed sharing the folder): then the torrent goes but the data stays. Removed torrents are taken out of ts
+        (and files). Returns ({hash: bytes freed}, {hashes whose data was kept})."""
+        files = files or TorrentFiles(ts)
         going = [
             h for h in dict.fromkeys(hashes) if h in ts
-        ]  # in the order given: the first one is credited with shared data
-        keep_paths, keep_keys = set(), set()
-        for x, t in ts.items():
-            if x not in going:
-                for p in files_under(t["content_path"]):
-                    keep_paths.add(os.path.realpath(p))
-                    if k := file_key(p):
-                        keep_keys.add(k)
+        ]  # in the order given: the first is credited with shared data
+        keep_paths, keep_keys = files.kept(going)
         freed: dict[str, int] = {}
         with_data: list[str] = []
         without: list[str] = []
-        seen: set[tuple[int, int]] = set()
+        seen: set[FileKey] = set()
         for h in going:
-            t, n = ts[h], 0
-            paths = files_under(t["content_path"])
-            (without if any(os.path.realpath(p) in keep_paths for p in paths) else with_data).append(h)
-            for p in paths:
-                try:
-                    st = os.stat(p)
-                except OSError:
-                    continue
-                k = (st.st_dev, st.st_ino)
-                if k not in keep_keys and k not in seen:
+            mine, n = files.files.get(h, []), 0
+            (without if any(real in keep_paths for real, _, _ in mine) else with_data).append(h)
+            for _, k, size in mine:
+                if k and k not in keep_keys and k not in seen:
                     seen.add(k)
-                    n += st.st_size
-            freed[h] = n if paths else t["size"]
+                    n += size
+            freed[h] = n if mine else ts[h]["size"]
         for group, data in ((with_data, True), (without, False)):
             if group:
                 self.connections.torrents.remove(group, data)
                 for h in group:  # taken out right away, so a failure in the second call leaves ts accurate
                     ts.pop(h, None)
+                    files.drop(h)
         return freed, set(without)
 
     def capture_restore(self, t: Torrent) -> JSON:
