@@ -55,7 +55,7 @@
 
 <div class="hero"><div class="wrapw">
 <header class="top">
-  <div class="brand"><img class="logo" src="/logo.svg?v=4" alt=""><div><h1>Shred<span>arr</span></h1><p>Delete it in Jellyfin, and it's gone everywhere.</p></div></div>
+  <div class="brand"><img class="logo" src="/logo.svg?v=4" alt=""><div><h1>Shred<span>arr</span></h1><p>Delete it in %MEDIA%, and it's gone everywhere.</p></div></div>
   <div class="hact">
     <span id="mode" class="pill %MODECLS%"><i></i><span id="modet">%MODETXT%</span></span>
     <button class="hbtn" id="htheme" title="Theme: follows your device"><svg class="i"><use href="#i-auto"/></svg><span>Theme</span></button>
@@ -94,14 +94,16 @@
     <div class="field"><label>URL</label><div><input name="radarr.url" placeholder="http://radarr:7878" autocomplete="off"></div></div>
     <div class="field"><label>API key</label><div><input name="radarr.api_key" type="password" autocomplete="off"><small>Radarr → Settings → General → API Key</small></div></div>
     <div class="btnrow"><button type="button" class="ctest">Test</button></div></div>
-  <div class="conn" data-svc="qbittorrent"><div class="conn-h"><i class="dot"></i><b>qBittorrent</b><small class="cstate"></small></div>
-    <div class="field"><label>URL</label><div><input name="qbittorrent.url" placeholder="http://qbittorrent:8080" autocomplete="off"></div></div>
-    <div class="field"><label>Username</label><div><input name="qbittorrent.username" autocomplete="off"></div></div>
-    <div class="field"><label>Password</label><div><input name="qbittorrent.password" type="password" autocomplete="off"></div></div>
+  <div class="conn" data-svc="client"><div class="conn-h"><i class="dot"></i><b>Torrent client</b><small class="cstate"></small></div>
+    <div class="field"><label for="f-client">App</label><div><select id="f-client" name="client.kind"><option value="qbittorrent">qBittorrent</option><option value="transmission">Transmission</option><option value="deluge">Deluge</option></select></div></div>
+    <div class="field"><label>URL</label><div><input name="client.url" autocomplete="off"><small id="client-help"></small></div></div>
+    <div class="field" id="client-user"><label>Username</label><div><input name="client.username" autocomplete="off"></div></div>
+    <div class="field"><label>Password</label><div><input name="client.password" type="password" autocomplete="off"></div></div>
     <div class="btnrow"><button type="button" class="ctest">Test</button></div></div>
-  <div class="conn" data-svc="jellyfin"><div class="conn-h"><i class="dot"></i><b>Jellyfin</b><small class="cstate"></small></div>
-    <div class="field"><label>URL</label><div><input name="jellyfin.url" placeholder="http://jellyfin:8096" autocomplete="off"></div></div>
-    <div class="field"><label>API key</label><div><input name="jellyfin.api_key" type="password" autocomplete="off"><small>Jellyfin → Dashboard → API Keys</small></div></div>
+  <div class="conn" data-svc="media"><div class="conn-h"><i class="dot"></i><b>Media server</b><small class="cstate"></small></div>
+    <div class="field"><label for="f-media">App</label><div><select id="f-media" name="media.kind"><option value="jellyfin">Jellyfin</option><option value="plex">Plex</option></select></div></div>
+    <div class="field"><label>URL</label><div><input name="media.url" autocomplete="off"></div></div>
+    <div class="field"><label id="media-key-label">API key</label><div><input name="media.api_key" type="password" autocomplete="off"><small id="media-help"></small></div></div>
     <div class="btnrow"><button type="button" class="ctest">Test</button></div></div>
   <div class="conn" data-svc="seerr"><div class="conn-h"><i class="dot"></i><b>Seerr</b><small class="opt">optional</small><small class="cstate"></small></div>
     <div class="field"><label>URL</label><div><input name="seerr.url" placeholder="http://seerr:5055" autocomplete="off"><small>Jellyseerr or Overseerr. Leave blank if you don't use one.</small></div></div>
@@ -112,14 +114,20 @@
     <div class="field"><label>API key</label><div><input name="prowlarr.api_key" type="password" autocomplete="off"><small>Prowlarr → Settings → General → API Key</small></div></div>
     <div class="btnrow"><button type="button" class="ctest">Test</button></div></div>
 </div>
+<div class="svc"><div class="svc-h">More Sonarr and Radarr instances</div>
+  <p class="help">For example a separate 4K Radarr. A delete only cleans up the instances whose copy is really gone, so deleting the 1080p version leaves the 4K one alone.</p>
+  <div class="conns" id="extras"></div>
+  <div class="btnrow"><button type="button" id="add-sonarr"><svg class="i"><use href="#i-plus"/></svg>Add Sonarr</button><button type="button" id="add-radarr"><svg class="i"><use href="#i-plus"/></svg>Add Radarr</button></div></div>
 <div class="btnrow"><button class="p"><svg class="i"><use href="#i-check"/></svg>Save connections</button></div>
 </form>
-<div class="svc"><div class="svc-h">Jellyfin webhook</div>
+<div class="svc" id="plexnote" hidden><div class="svc-h">Plex deletes</div>
+  <p class="help">Plex can't send deletes to other apps, so Shredarr watches your library folders instead: when a movie or episode file Sonarr/Radarr know about disappears and stays gone for a couple of minutes, it's handled like a delete. Renames, upgrades and a disk going offline are recognized and ignored. To delete from Plex, turn on <b>Allow media deletion</b> in Plex → Settings → Library.</p></div>
+<div class="svc" id="jfhook"><div class="svc-h">Jellyfin webhook</div>
   <p class="help">Jellyfin tells Shredarr about deletes through its <b>Webhook</b> plugin. Install it from Jellyfin → Dashboard → Plugins → Catalog, then let Shredarr set it up.</p>
   <form id="wform"><div class="field"><label for="f-wu">Shredarr address</label><div><input id="f-wu" name="url" placeholder="http://shredarr:8089"><small>How Jellyfin reaches Shredarr. Use the server's IP if Jellyfin isn't on the same Docker network.</small></div></div>
   <div class="btnrow"><button class="p"><svg class="i"><use href="#i-link"/></svg>Set up Jellyfin webhook</button></div></form></div>
 <div class="svc"><div class="svc-h">Path mappings</div>
-  <p class="help">Only needed if qBittorrent or Sonarr/Radarr see your files at a different path than Shredarr does. Example: qBittorrent says <code>/downloads/</code>, Shredarr has the same folder at <code>/data/downloads/</code>.</p>
+  <p class="help">Only needed if your torrent client or Sonarr/Radarr see your files at a different path than Shredarr does. Example: the torrent client says <code>/downloads/</code>, Shredarr has the same folder at <code>/data/downloads/</code>.</p>
   <form id="mform"><div id="maps"></div>
   <div class="btnrow"><button type="button" id="addmap"><svg class="i"><use href="#i-plus"/></svg>Add mapping</button><button class="p">Save mappings</button></div></form></div>
 </section>
@@ -153,14 +161,14 @@
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="A torrent is cleaned up" name="on_cleanup"><span><b>A torrent is cleaned up</b><small>Its torrent and download were deleted, with the space freed.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Something goes wrong" name="on_failure"><span><b>Something goes wrong</b><small>Any step that fails, or an app Shredarr can't reach.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="An undo finishes" name="on_undo"><span><b>An undo finishes</b><small>Whether the restore worked or not.</small></span></div>
-<div class="sw-row"><input type="checkbox" class="sw" aria-label="I delete something in Jellyfin" name="on_jellyfin"><span><b>I delete something in Jellyfin</b><small>Every delete Shredarr receives.</small></span></div>
+<div class="sw-row"><input type="checkbox" class="sw" aria-label="I delete something in %MEDIA%" name="on_jellyfin"><span><b>I delete something in %MEDIA%</b><small>Every delete Shredarr receives.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Daily summary" name="daily_summary"><span><b>Daily summary</b><small>What was cleaned up, space freed, problems and what's waiting.</small></span><input type="time" name="summary_time" class="tm"></div></div>
 <div class="btnrow"><button type="button" id="ntest"><svg class="i"><use href="#i-send"/></svg>Send test</button><button class="p"><svg class="i"><use href="#i-check"/></svg>Save</button></div>
 </form></section>
 
 <div class="scol">
 <section class="sbox"><h3><span class="ic blue"><svg class="i"><use href="#i-broom"/></svg></span>Cleanup behavior</h3>
-<p class="help">What Shredarr does in Sonarr, Radarr and Seerr when you delete something in Jellyfin.</p>
+<p class="help">What Shredarr does in Sonarr, Radarr and Seerr when you delete something in %MEDIA%.</p>
 <form id="bform">
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Add an import exclusion" name="import_exclusion"><span><b>Add an import exclusion</b><small>When a movie or show is removed, stop import lists from adding it back.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Remove it from Seerr" name="remove_from_seerr"><span><b>Remove it from Seerr</b><small>So it can be requested again later.</small></span></div>
@@ -170,7 +178,7 @@
 </form></section>
 
 <section class="sbox"><h3><span class="ic green"><svg class="i"><use href="#i-clock"/></svg></span>Deletion delay</h3>
-<p class="help">After you delete something in Jellyfin, Shredarr can hold on to its torrent for a while before removing it, even once the seeding rule is met. That gives you time to <b>Undo</b> a delete you didn't mean.</p>
+<p class="help">After you delete something in %MEDIA%, Shredarr can hold on to its torrent for a while before removing it, even once the seeding rule is met. That gives you time to <b>Undo</b> a delete you didn't mean.</p>
 <form id="gform">
 <div class="field"><label for="f-gv">Wait</label><div><div class="dur"><input id="f-gv" name="value" type="number" min="0" step="any"><select name="unit"><option value="hours">hours</option><option value="days">days</option></select></div>
 <small id="g-help">0 means no delay: the torrent is removed as soon as its seeding rule is met.</small></div></div>
@@ -231,7 +239,7 @@
 <select id="msort" class="mobile"><option value="">Sort: default</option><option value="added:-1">Newest added</option><option value="added:1">Oldest added</option>
 <option value="name:1">Name A–Z</option><option value="ratio:-1">Highest ratio</option><option value="ratio:1">Lowest ratio</option>
 <option value="seeded:-1">Longest seeded</option><option value="seeded:1">Shortest seeded</option><option value="rule:-1">Seeding rule met first</option><option value="status:1">Status</option></select>
-<select id="show"><option value="">All torrents</option><option value="queued">Deleted in Jellyfin</option><option value="met">Seeding rule met</option><option value="leftover">Leftovers</option><option value="crossseed">Cross-seeds</option><option value="protected">Protected</option><option value="custom">Custom rule</option><option value="active">Transferring</option></select>
+<select id="show"><option value="">All torrents</option><option value="queued">Deleted in %MEDIA%</option><option value="met">Seeding rule met</option><option value="leftover">Leftovers</option><option value="crossseed">Cross-seeds</option><option value="protected">Protected</option><option value="custom">Custom rule</option><option value="active">Transferring</option></select>
 <button id="checknow"><svg class="i"><use href="#i-refresh"/></svg><span>Check now</span></button><span class="upd" id="upd">Loading…</span></div>
 <div class="wrap"><table><thead><tr><th data-k="name"><input type="checkbox" id="selall" class="selbox" aria-label="Select all shown">Torrent</th><th data-k="added">Added</th><th data-k="state">State</th><th data-k="ratio">Ratio</th><th data-k="seeded">Seeded</th><th data-k="rule" title="Sort by seeding progress: rule met first, then closest to meeting it">Rule</th><th data-k="status">Status</th><th></th></tr></thead>
 <tbody id="rows"><tr class="sk"><td colspan="8"><div style="width:60%"></div></td></tr><tr class="sk"><td colspan="8"><div style="width:45%"></div></td></tr><tr class="sk"><td colspan="8"><div style="width:70%"></div></td></tr><tr class="sk"><td colspan="8"><div style="width:52%"></div></td></tr></tbody></table>
@@ -242,13 +250,13 @@
 <div class="wrap"><table class="hist"><thead><tr><th>Cleaned up</th><th>Torrent</th><th>Size</th><th>Why</th><th></th></tr></thead><tbody id="hrows"></tbody></table>
 <div class="empty" id="hempty" hidden><img src="/logo.svg?v=4" alt=""><b>Nothing cleaned up yet</b>Torrents Shredarr deletes will be listed here.</div></div></div>
 <div id="pane-n" hidden><div class="bar"><div class="search"><svg class="i"><use href="#i-search"/></svg><input type="search" id="nq" placeholder="Search media with no torrent"></div><span class="upd" id="nsum">Loading…</span><button id="nsel-del" class="danger" hidden><svg class="i"><use href="#i-trash"/></svg><span>Delete selected</span></button><button id="nrefresh"><svg class="i"><use href="#i-refresh"/></svg><span>Check again</span></button></div>
-<p class="help pad">Movies and episodes in your library whose torrent isn't in qBittorrent anymore, so they aren't seeding. Deleting one works like deleting it in Jellyfin: it's removed from Jellyfin and Radarr (or unmonitored in Sonarr), and the files are deleted.</p>
+<p class="help pad">Movies and episodes in your library whose torrent isn't in %CLIENT% anymore, so they aren't seeding. Deleting one works like deleting it in %MEDIA%: it's removed from %MEDIA% and Radarr (or unmonitored in Sonarr), and the files are deleted.</p>
 <div class="wrap"><table class="hist orph"><thead><tr><th><input type="checkbox" id="nselall" class="selbox" aria-label="Select all">Media</th><th>Size</th><th>Folder</th><th></th></tr></thead><tbody id="nrows"></tbody></table>
 <div class="empty" id="nempty" hidden><img src="/logo.svg?v=4" alt=""><b>Everything has a torrent</b>Every movie and episode in your library still comes from a torrent in qBittorrent.</div>
 <div class="empty" id="nnone" hidden><img src="/logo.svg?v=4" alt=""><b>Nothing found</b>Nothing with no torrent matches your search.</div></div></div>
 </section>
 <div class="how dash">
-<div class="step"><div class="num">1</div><b>Delete it in Jellyfin</b><p>A movie or series is removed from Radarr/Sonarr and Seerr. An episode or season is unmonitored so it isn't downloaded again.</p></div>
+<div class="step"><div class="num">1</div><b>Delete it in %MEDIA%</b><p>A movie or series is removed from Radarr/Sonarr and Seerr. An episode or season is unmonitored so it isn't downloaded again.</p></div>
 <div class="step"><div class="num">2</div><b>The torrent keeps seeding</b><p>…until none of its files are left in your library and its seeding rule is met. Changed your mind? <b>Undo</b> puts it back while it's still waiting.</p></div>
 <div class="step"><div class="num">3</div><b>Gone everywhere</b><p>The torrent and its download are deleted. <b>Delete now</b> does all of it at once, ignoring the rule.</p></div>
 </div>
@@ -286,7 +294,7 @@
 <label>Min ratio<input type="number" id="dratio" step="any" min="0" placeholder="off"></label></div>
 <div class="btns"><button value="cancel">Cancel</button><button class="p" value="save"><svg class="i"><use href="#i-check"/></svg>Save</button></div></form></dialog>
 <div id="toast"><svg class="i"><use href="#i-check"/></svg><span></span></div>
-<script>window.MODES=%MODESJSON%</script>
+<script>window.MODES=%MODESJSON%;window.MEDIA="%MEDIA%";window.CLIENT="%CLIENT%"</script>
 <script src="/static/app.js?v=%ASSETV%"></script>
 </body>
 </html>

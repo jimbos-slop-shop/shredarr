@@ -23,7 +23,8 @@ s.save_cfg({**conns, "rules": {"mode": "either", "min_seed_days": 14, "min_ratio
             "rule_list": [{"type": "category", "match": "tv-sonarr", "mode": "either", "min_seed_days": 7, "min_ratio": 1.5},
                           {"type": "title", "match": "The Lighthouse Keepers", "mode": "days", "min_seed_days": 3, "min_ratio": None},
                           {"type": "tracker", "match": "tracker.example.org", "mode": "days", "min_seed_days": 30, "min_ratio": None}],
-            "notify": {"discord_url": "https://discord.com/api/webhooks/0000/demo", "discord_username": "Shredarr"}})
+            "notify": {"discord_url": "https://discord.com/api/webhooks/0000/demo", "discord_username": "Shredarr"},
+            "extra_arrs": [{"key": "radarr-4k", "kind": "radarr", "name": "Radarr 4K", "url": "http://radarr4k:7878/api/v3", "api_key": "demo"}]})
 s.set_password("demo")
 
 # name, title, category, size GB, ratio, seeded days, upload KB/s, in library, waiting for cleanup, own rule
@@ -72,9 +73,12 @@ def demo_torrents():
 ORPHANS = [("radarr:1", "radarr", "Caminandes", 2013, "Movie", 3.1, 1, "/data/media/movies/Caminandes (2013)"),
            ("sonarr:4:1", "sonarr", "Paper Moons", 2019, "S01E01-E10 (10 episodes)", 14.2, 10, "/data/media/tv/Paper Moons/Season 01"),
            ("sonarr:4:2", "sonarr", "Paper Moons", 2019, "S02E01-E08 (8 episodes)", 11.6, 8, "/data/media/tv/Paper Moons/Season 02"),
-           ("radarr:2", "radarr", "Glass Half", 2015, "Movie", 1.4, 1, "/data/media/movies/Glass Half (2015)")]
+           ("radarr:2", "radarr", "Glass Half", 2015, "Movie", 1.4, 1, "/data/media/movies/Glass Half (2015)"),
+           ("radarr-4k:7", "radarr-4k", "Sintel", 2010, "Movie", 6.8, 1, "/data/media/movies4k/Sintel (2010)")]
+INSTANCES = {"radarr": "Radarr", "sonarr": "Sonarr", "radarr-4k": "Radarr 4K"}
 s.media_without_torrent = lambda max_age=300: {"t": NOW, "items": sorted(
-    [{"id": i, "app": a, "title": t, "year": y, "what": w, "size": int(g * GB), "files": f, "linked": False, "path": p}
+    [{"id": i, "app": a, "kind": a.split("-")[0], "instance": INSTANCES[a], "title": t, "year": y, "what": w, "size": int(g * GB),
+      "files": f, "linked": False, "path": p}
      for i, a, t, y, w, g, f, p in ORPHANS], key=lambda x: -x["size"])}
 s.orphan_plan = lambda c, ids: ([(f"Delete {', '.join(repr(x[2]) for x in ORPHANS if x[0] in ids)} from Jellyfin (and its library files)", None)]
                                 + [(f"Remove '{x[2]}' from Radarr, with its files (and add an import exclusion)", None) for x in ORPHANS if x[0] in ids and x[1] == "radarr"]
@@ -88,7 +92,7 @@ s.titles = lambda: {"t": NOW, "series": {1: "The Lighthouse Keepers", 2: "Harbor
 s.check_health = s.check_update = lambda: None
 s.free_gb = lambda ts: 1830
 for k, v in {"sonarr": "Sonarr 4.0.20", "radarr": "Radarr 6.4.4", "qbittorrent": "qBittorrent v5.2.3", "jellyfin": "Jellyfin 10.11.10 · Home",
-             "seerr": "Seerr 3.4.1"}.items():
+             "seerr": "Seerr 3.4.1", "radarr-4k": "Radarr 6.4.4"}.items():
     s.health[k] = {"ok": True, "msg": v, "ts": NOW}
 s.update_info.update(latest=s.VERSION, url="https://github.com/jschaef80/shredarr/releases", newer=False)
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Shredarr: when something is deleted in Jellyfin, remove it from Sonarr/Radarr/Seerr
-right away, then delete its torrent (and download copy) from qBittorrent once the
+"""Shredarr: when something is deleted in Jellyfin or Plex, remove it from Sonarr/Radarr/Seerr
+right away, then delete its torrent (and download copy) from the torrent client once the
 seeding rules are met and none of the torrent's files are still in the library."""
 import base64, hashlib, hmac, html, http.cookiejar, http.cookies, json, os, queue, re, secrets, shutil, sqlite3, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 REPO = os.environ.get("SHREDARR_REPO", "jschaef80/shredarr")  # where update checks look for new releases
 CFG = os.environ.get("SHREDARR_CONFIG", "/config/config.json")
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -81,8 +81,10 @@ def db():
 
 MODES = {"either": "seed time OR ratio (whichever first)", "both": "seed time AND ratio",
          "days": "seed time only", "ratio": "ratio only", "never": "never delete (protected)"}
-SERVICES = {"sonarr": "Sonarr", "radarr": "Radarr", "seerr": "Seerr", "qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "prowlarr": "Prowlarr"}
-REQUIRED = ("sonarr", "radarr", "qbittorrent", "jellyfin")
+CLIENTS = {"qbittorrent": "qBittorrent", "transmission": "Transmission", "deluge": "Deluge"}
+MEDIA_SERVERS = {"jellyfin": "Jellyfin", "plex": "Plex"}
+SERVICES = {"sonarr": "Sonarr", "radarr": "Radarr", "seerr": "Seerr", **CLIENTS, **MEDIA_SERVERS, "prowlarr": "Prowlarr"}
+ARR_KINDS = ("sonarr", "radarr")
 OPTIONAL = ("seerr", "prowlarr")
 SECRET_KEYS = ("api_key", "password")  # never sent back to the browser
 API_SUFFIX = {"sonarr": "/api/v3", "radarr": "/api/v3", "seerr": "/api/v1", "prowlarr": "/api/v1"}
@@ -95,22 +97,76 @@ def behavior():
     return {**BEHAVIOR_DEFAULTS, **cfg().get("behavior", {})}
 
 
-def configured(c=None):
+def client_kind(c=None):
+    """Which torrent client is used: qbittorrent, transmission or deluge."""
+    k = (c if c is not None else cfg()).get("torrent_client")
+    return k if k in CLIENTS else "qbittorrent"
+
+
+def media_kind(c=None):
+    """Which media server is used: jellyfin or plex."""
+    k = (c if c is not None else cfg()).get("media_server")
+    return k if k in MEDIA_SERVERS else "jellyfin"
+
+
+def client_name():
+    return CLIENTS[client_kind()]
+
+
+def media_name():
+    return MEDIA_SERVERS[media_kind()]
+
+
+def required(c=None):
     c = c if c is not None else cfg()
-    return [k for k in REQUIRED if not (c.get(k) or {}).get("url")]
+    return ["sonarr", "radarr", client_kind(c), media_kind(c)]
+
+
+def configured(c=None):
+    """The required connections that aren't set up yet."""
+    c = c if c is not None else cfg()
+    return [k for k in required(c) if not (c.get(k) or {}).get("url")]
+
+
+def arr_instances(kind=None, c=None):
+    """[(key, kind, name, conf)] for every Sonarr/Radarr: the main ones (keys "sonarr" and "radarr") first, then any
+    extra instances such as a 4K Radarr (keys like "radarr-4k")."""
+    c = c if c is not None else cfg()
+    out = [(k, k, SERVICES[k], c[k]) for k in ARR_KINDS if (c.get(k) or {}).get("url")]
+    out += [(x["key"], x["kind"], x.get("name") or x["key"], x) for x in c.get("extra_arrs", []) if x.get("url") and x.get("key")]
+    return [x for x in out if not kind or x[1] == kind]
+
+
+def kind_of(key):
+    """'sonarr' or 'radarr' for an instance key ("radarr", "radarr-4k", ...)."""
+    return (key or "").split("-")[0]
+
+
+def arr_api(key):
+    """API client for a Sonarr/Radarr instance by key. Falls back to the main instance of that kind if the instance
+    was removed from Settings since."""
+    insts = arr_instances()
+    conf = next((x[3] for x in insts if x[0] == key), None) or next((x[3] for x in insts if x[0] == kind_of(key)), None)
+    if not conf:
+        raise RuntimeError(f"{SERVICES.get(kind_of(key), key)} isn't set up")
+    return Arr(conf)
+
+
+def arr_name(key):
+    return next((x[2] for x in arr_instances() if x[0] == key), SERVICES.get(kind_of(key), key))
 
 
 def base_url(svc, url):
     """What the user typed (http://sonarr:8989) -> what the API client needs (…/api/v3)."""
     url = (url or "").strip().rstrip("/")
-    suffix = API_SUFFIX.get(svc, "")
+    suffix = API_SUFFIX.get(svc) or API_SUFFIX.get(kind_of(svc), "")
     if suffix and url.endswith(suffix):
         url = url[: -len(suffix)]
     return url
 
 
 def api_url(svc, url):
-    return base_url(svc, url) + API_SUFFIX.get(svc, "") if url else ""
+    return base_url(svc, url) + (API_SUFFIX.get(svc) or API_SUFFIX.get(kind_of(svc), "")) if url else ""
 
 
 def default_rule(c):
@@ -226,11 +282,12 @@ def summary_text():
     since = time.time() - 86400
     with db() as con:
         n, size = con.execute("select count(*), coalesce(sum(size), 0) from cleaned where ts > ?", (since,)).fetchone()
-        jf = con.execute("select count(*) from log where ts > ? and msg like 'Jellyfin deleted%'", (since,)).fetchone()[0]
+        jf = con.execute("select count(*) from log where ts > ? and (msg like 'Jellyfin deleted%' or msg like 'Plex deleted%')",
+                         (since,)).fetchone()[0]
         bad = con.execute("select count(*) from log where ts > ? and (msg like '%FAILED%' or msg like '%failed%')", (since,)).fetchone()[0]
         waiting = con.execute("select count(*) from pending").fetchone()[0]
     return (f"Last 24 hours: {n} torrent{'s' * (n != 1)} cleaned up ({human(size)} freed), "
-            f"{jf} delete{'s' * (jf != 1)} from Jellyfin, {bad} problem{'s' * (bad != 1)}.\n"
+            f"{jf} delete{'s' * (jf != 1)} from {media_name()}, {bad} problem{'s' * (bad != 1)}.\n"
             f"Waiting for cleanup: {waiting} torrent{'s' * (waiting != 1)}.")
 
 
@@ -389,6 +446,165 @@ class QBit:
             return r.read()
 
 
+class QBitClient:
+    def __init__(self, conf):
+        self.q = QBit(conf)
+
+    def torrents(self, hashes=None):
+        return self.q("/torrents/info", **({"hashes": "|".join(hashes)} if hashes else {}))
+
+    def remove(self, hashes, with_data):
+        self.q("/torrents/delete", {"hashes": "|".join(hashes), "deleteFiles": "true" if with_data else "false"})
+
+    def export(self, h):
+        data = self.q("/torrents/export", hash=h)
+        return data if isinstance(data, bytes) and data.startswith(b"d") else None
+
+    def add(self, content, filename, category):
+        self.q.upload("/torrents/add", {"category": category or ""}, filename, content)
+
+    def version(self):
+        v = self.q("/app/version")
+        if not v or b"Forbidden" in (v if isinstance(v, bytes) else b""):
+            raise RuntimeError("wrong username or password")
+        return "qBittorrent " + (v.decode() if isinstance(v, bytes) else str(v))
+
+
+class Transmission:
+    """Transmission's RPC API. Torrents come back in the same shape as qBittorrent's."""
+    FIELDS = ["hashString", "name", "downloadDir", "sizeWhenDone", "percentDone", "uploadRatio", "secondsSeeding", "status", "error",
+              "rateUpload", "rateDownload", "addedDate", "labels", "trackers", "torrentFile"]
+    STATES = {1: "checkingUP", 2: "checkingUP", 3: "queuedDL", 4: "downloading", 5: "queuedUP"}
+
+    def __init__(self, conf):
+        url = conf["url"].rstrip("/")
+        self.url = url if url.endswith("/rpc") else url + "/transmission/rpc"
+        self.h = {"Content-Type": "application/json"}
+        if conf.get("username") or conf.get("password"):
+            tok = base64.b64encode(f"{conf.get('username', '')}:{conf.get('password', '')}".encode()).decode()
+            self.h["Authorization"] = "Basic " + tok
+
+    def rpc(self, method, **args):
+        for attempt in (0, 1, 2):
+            req = urllib.request.Request(self.url, json.dumps({"method": method, "arguments": args}).encode(), self.h)
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    out = json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                if e.code == 409 and attempt < 2:  # Transmission hands out a session id on the first call
+                    self.h["X-Transmission-Session-Id"] = e.headers.get("X-Transmission-Session-Id", "")
+                    continue
+                if e.code == 401:
+                    raise RuntimeError("wrong username or password")
+                raise
+            if out.get("result") != "success":
+                raise RuntimeError(out.get("result") or "Transmission error")
+            return out.get("arguments") or {}
+
+    def torrents(self, hashes=None):
+        args = {"fields": self.FIELDS, **({"ids": list(hashes)} if hashes else {})}
+        out = []
+        for t in self.rpc("torrent-get", **args)["torrents"]:
+            done = t["percentDone"] >= 1
+            state = "error" if t.get("error") else "pausedUP" if t["status"] == 0 and done else "pausedDL" if t["status"] == 0 \
+                else ("uploading" if t["rateUpload"] else "stalledUP") if t["status"] == 6 else self.STATES.get(t["status"], "unknown")
+            labels = t.get("labels") or []
+            out.append({"hash": t["hashString"].lower(), "name": t["name"], "save_path": t["downloadDir"],
+                        "content_path": os.path.join(t["downloadDir"], t["name"]), "size": t["sizeWhenDone"], "progress": t["percentDone"],
+                        "ratio": max(0.0, t["uploadRatio"]), "seeding_time": t.get("secondsSeeding") or 0, "state": state,
+                        "upspeed": t["rateUpload"], "dlspeed": t["rateDownload"], "added_on": t["addedDate"],
+                        "category": labels[0] if labels else os.path.basename(t["downloadDir"].rstrip("/")),
+                        "tracker": ((t.get("trackers") or [{}])[0]).get("announce", ""), "torrent_file": t.get("torrentFile")})
+        return out
+
+    def remove(self, hashes, with_data):
+        self.rpc("torrent-remove", ids=list(hashes), **{"delete-local-data": bool(with_data)})
+
+    def export(self, h):
+        """Transmission keeps .torrent files in its own config folder; readable only if that folder is mounted here."""
+        t = self.torrents([h])
+        p = local(t[0].get("torrent_file") or "") if t else ""
+        if p and os.path.isfile(p):
+            with open(p, "rb") as f:
+                return f.read()
+        return None
+
+    def add(self, content, filename, category):
+        self.rpc("torrent-add", metainfo=base64.b64encode(content).decode(), **({"labels": [category]} if category else {}))
+
+    def version(self):
+        return "Transmission " + str(self.rpc("session-get", fields=["version"]).get("version", ""))
+
+
+class Deluge:
+    """Deluge's Web UI JSON API (with the Label plugin for categories). Torrents come back in qBittorrent's shape."""
+    KEYS = ["name", "save_path", "download_location", "total_wanted", "progress", "ratio", "seeding_time", "state", "upload_payload_rate",
+            "download_payload_rate", "time_added", "label", "trackers"]
+
+    def __init__(self, conf):
+        url = conf["url"].rstrip("/")
+        self.url = url if url.endswith("/json") else url + "/json"
+        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.n = 0
+        if not self.rpc("auth.login", conf.get("password", "")):
+            raise RuntimeError("wrong password")
+        if not self.rpc("web.connected"):
+            hosts = self.rpc("web.get_hosts")
+            if not hosts:
+                raise RuntimeError("the Deluge web UI isn't connected to a Deluge daemon")
+            self.rpc("web.connect", hosts[0][0])
+
+    def rpc(self, method, *params):
+        self.n += 1
+        req = urllib.request.Request(self.url, json.dumps({"method": method, "params": list(params), "id": self.n}).encode(),
+                                     {"Content-Type": "application/json"})
+        with self.op.open(req, timeout=60) as r:
+            out = json.loads(r.read())
+        if out.get("error"):
+            raise RuntimeError((out["error"] or {}).get("message") or "Deluge error")
+        return out.get("result")
+
+    def torrents(self, hashes=None):
+        res = self.rpc("core.get_torrents_status", {"id": list(hashes)} if hashes else {}, self.KEYS) or {}
+        out = []
+        for h, t in res.items():
+            done, st = t["progress"] >= 100, t.get("state") or ""
+            state = {"Seeding": "uploading" if t["upload_payload_rate"] else "stalledUP", "Downloading": "downloading", "Error": "error",
+                     "Checking": "checkingUP", "Moving": "moving", "Allocating": "allocating",
+                     "Paused": "pausedUP" if done else "pausedDL", "Queued": "queuedUP" if done else "queuedDL"}.get(st, st.lower())
+            save = t.get("download_location") or t.get("save_path") or ""
+            out.append({"hash": h.lower(), "name": t["name"], "save_path": save, "content_path": os.path.join(save, t["name"]),
+                        "size": t["total_wanted"], "progress": t["progress"] / 100, "ratio": max(0.0, t["ratio"]),
+                        "seeding_time": t.get("seeding_time") or 0, "state": state, "upspeed": t["upload_payload_rate"],
+                        "dlspeed": t["download_payload_rate"], "added_on": int(t["time_added"]), "category": t.get("label") or "",
+                        "tracker": ((t.get("trackers") or [{}])[0]).get("url", "")})
+        return out
+
+    def remove(self, hashes, with_data):
+        for h in hashes:
+            self.rpc("core.remove_torrent", h, bool(with_data))
+
+    def export(self, h):
+        return None  # Deluge can't hand out a torrent's .torrent file
+
+    def add(self, content, filename, category):
+        tid = self.rpc("core.add_torrent_file", filename, base64.b64encode(content).decode(), {})
+        if tid and category:
+            try:
+                if category not in (self.rpc("label.get_labels") or []):
+                    self.rpc("label.add", category)
+                self.rpc("label.set_torrent", tid, category)
+            except RuntimeError:
+                pass  # Label plugin not enabled
+
+    def version(self):
+        return "Deluge " + str(self.rpc("daemon.get_version"))
+
+
+def make_client(kind, conf):
+    return {"qbittorrent": QBitClient, "transmission": Transmission, "deluge": Deluge}[kind](conf)
+
+
 # ---------- Jellyfin delete handling ----------
 
 def act(c, desc, fn):
@@ -422,7 +638,7 @@ def torrent_content(h):
         out["seriesId"] = out["seriesId"] or i.get("seriesId")
     if out["seriesId"] and ep_ids:
         try:
-            eps = Arr(cfg()["sonarr"])("GET", "/episode", seriesId=out["seriesId"])
+            eps = arr_api(out["app"])("GET", "/episode", seriesId=out["seriesId"])
             out["episodes"] = sorted([e["seasonNumber"], e["episodeNumber"]] for e in eps if e["id"] in ep_ids)
         except Exception:
             pass
@@ -472,69 +688,106 @@ def find_series(sonarr, tvdb=None, tmdb=None, imdb=None, title=None):
     return hits[0] if len(hits) == 1 else None
 
 
-def parent_series(c, sonarr, ev):
-    ids = {}
-    if ev.get("series_id"):
-        jf = c["jellyfin"]
-        try:
-            r = call("GET", jf["url"].rstrip("/") + "/Items?" + urllib.parse.urlencode({"ids": ev["series_id"], "fields": "ProviderIds"}),
-                     {"X-Emby-Token": jf["api_key"]})
-            if r.get("Items"):
-                ids = {k.lower(): v for k, v in (r["Items"][0].get("ProviderIds") or {}).items()}
-        except Exception as e:
-            log(f"  Jellyfin series lookup failed ({e}); matching by title")
-    return find_series(sonarr, ids.get("tvdb"), ids.get("tmdb"), ids.get("imdb"), ev.get("series_name"))
+def jellyfin_series_ids(c, ev):
+    """Provider ids (tvdb, tmdb, imdb) of the show an episode or season event belongs to, from Jellyfin."""
+    if not ev.get("series_id"):
+        return {}
+    jf = c["jellyfin"]
+    try:
+        r = call("GET", jf["url"].rstrip("/") + "/Items?" + urllib.parse.urlencode({"ids": ev["series_id"], "fields": "ProviderIds"}),
+                 {"X-Emby-Token": jf["api_key"]})
+        if r.get("Items"):
+            return {k.lower(): v for k, v in (r["Items"][0].get("ProviderIds") or {}).items()}
+    except Exception as e:
+        log(f"  Jellyfin series lookup failed ({e}); matching by title")
+    return {}
+
+
+def on_disk(p):
+    """Does this file (as Sonarr/Radarr name it) still exist?"""
+    return bool(p) and os.path.exists(local(p))
 
 
 def on_movie(c, ev):
-    radarr = Arr(c["radarr"])
-    movies = radarr("GET", "/movie")
-    m = next((m for m in movies if ev.get("tmdb_id") and m.get("tmdbId") == ev["tmdb_id"]), None) \
-        or next((m for m in movies if ev.get("imdb_id") and m.get("imdbId") == ev["imdb_id"]), None)
-    if not m:
-        hits = [m for m in movies if m["title"].casefold() == (ev.get("name") or "").casefold()]
-        m = hits[0] if len(hits) == 1 else None
-    if not m:
+    """With more than one Radarr (say a 4K one), only the instances whose copy is really gone are cleaned up."""
+    found = []
+    for key, _, name, conf in arr_instances("radarr", c):
+        radarr = Arr(conf)
+        movies = radarr("GET", "/movie")
+        m = next((m for m in movies if ev.get("tmdb_id") and m.get("tmdbId") == ev["tmdb_id"]), None) \
+            or next((m for m in movies if ev.get("imdb_id") and m.get("imdbId") == ev["imdb_id"]), None)
+        if not m:
+            hits = [m for m in movies if m["title"].casefold() == (ev.get("name") or "").casefold()]
+            m = hits[0] if len(hits) == 1 else None
+        if m:
+            found.append((key, name, radarr, m, m.get("hasFile") and on_disk((m.get("movieFile") or {}).get("path"))))
+    if not found:
         return log("  no Radarr match")
+    for key, name, radarr, m, kept in found:
+        if kept:
+            log(f"  '{m['title']}' still has its file in {name}, so that copy stays")
+        else:
+            movie_removed(c, key, name, radarr, m, seerr=not any(x[4] for x in found))
+
+
+def movie_removed(c, key, name, radarr, m, seerr=True):
     hashes = {h["downloadId"] for h in radarr("GET", "/history/movie", movieId=m["id"]) if h.get("downloadId")}
-    snap = {"kind": "movie", "movie": {k: m.get(k) for k in ("tmdbId", "title", "year", "qualityProfileId", "path", "monitored", "minimumAvailability", "tags")}}
+    snap = {"kind": "movie", "app": key, "movie": {k: m.get(k) for k in MOVIE_KEYS}}
     queue_torrents(hashes, m["title"], "movie", snap, secrets.token_hex(6))
     bh = behavior()
-    act(c, f"removed '{m['title']}' from Radarr" + (" (with import exclusion)" if bh["import_exclusion"] else ""),
+    act(c, f"removed '{m['title']}' from {name}" + (" (with import exclusion)" if bh["import_exclusion"] else ""),
         lambda: radarr("DELETE", f"/movie/{m['id']}", deleteFiles="true", addImportExclusion=str(bh["import_exclusion"]).lower()))
-    if bh["remove_from_seerr"]:
+    if bh["remove_from_seerr"] and seerr:
         seerr_remove(c, "movie", m.get("tmdbId"), m["title"])
 
 
 def on_series(c, ev):
-    sonarr = Arr(c["sonarr"])
-    s = find_series(sonarr, ev.get("tvdb_id"), ev.get("tmdb_id"), ev.get("imdb_id"), ev.get("name"))
-    if not s:
+    found = []
+    for key, _, name, conf in arr_instances("sonarr", c):
+        sonarr = Arr(conf)
+        s = find_series(sonarr, ev.get("tvdb_id"), ev.get("tmdb_id"), ev.get("imdb_id"), ev.get("name"))
+        if s:
+            found.append((key, name, sonarr, s, os.path.isdir(local(s["path"]))))
+    if not found:
         return log("  no Sonarr match")
-    if os.path.isdir(s["path"]):
-        # Deleting a show in Jellyfin deletes its folder. If the folder is still there, Jellyfin only dropped a show
-        # with no episodes left on disk (e.g. after its last episode was deleted), so keep it in Sonarr for new episodes.
-        return log(f"  '{s['title']}' folder still exists, so Jellyfin just dropped an empty show; keeping it in Sonarr")
+    for key, name, sonarr, s, kept in found:
+        if kept:
+            # Deleting a show in Jellyfin deletes its folder. If the folder is still there, Jellyfin only dropped a show
+            # with no episodes left on disk (e.g. after its last episode was deleted), so keep it in Sonarr for new episodes.
+            log(f"  '{s['title']}' folder still exists in {name}, so this was just an empty show being dropped; keeping it")
+        else:
+            series_removed(c, key, name, sonarr, s, seerr=not any(x[4] for x in found))
+
+
+def series_removed(c, key, name, sonarr, s, seerr=True):
     hashes = {h["downloadId"] for h in sonarr("GET", "/history/series", seriesId=s["id"]) if h.get("downloadId")}
-    snap = {"kind": "series",
-            "series": {k: s.get(k) for k in ("tvdbId", "title", "qualityProfileId", "path", "seasonFolder", "seriesType", "monitored", "monitorNewItems", "tags")},
+    snap = {"kind": "series", "app": key,
+            "series": {k: s.get(k) for k in SERIES_KEYS},
             "seasons": [[x["seasonNumber"], x["monitored"]] for x in s["seasons"]],
             "monitored_eps": [[e["seasonNumber"], e["episodeNumber"]] for e in sonarr("GET", "/episode", seriesId=s["id"]) if e["monitored"]]}
     queue_torrents(hashes, s["title"], "series", snap, secrets.token_hex(6))
     bh = behavior()
-    act(c, f"removed '{s['title']}' from Sonarr" + (" (with import list exclusion)" if bh["import_exclusion"] else ""),
+    act(c, f"removed '{s['title']}' from {name}" + (" (with import list exclusion)" if bh["import_exclusion"] else ""),
         lambda: sonarr("DELETE", f"/series/{s['id']}", deleteFiles="true", addImportListExclusion=str(bh["import_exclusion"]).lower()))
-    if bh["remove_from_seerr"]:
+    if bh["remove_from_seerr"] and seerr:
         seerr_remove(c, "tv", s.get("tmdbId"), s["title"])
 
 
 def on_episodes(c, ev, season, numbers=None):
     """Whole season when numbers is None, otherwise the listed episode numbers."""
-    sonarr = Arr(c["sonarr"])
-    s = parent_series(c, sonarr, ev)
-    if not s:
-        return log("  no Sonarr match for the series")
-    dirs = os.listdir(s["path"]) if os.path.isdir(s["path"]) else []
+    ids, found = jellyfin_series_ids(c, ev), False
+    for key, _, name, conf in arr_instances("sonarr", c):
+        sonarr = Arr(conf)
+        s = find_series(sonarr, ids.get("tvdb"), ids.get("tmdb"), ids.get("imdb"), ev.get("series_name"))
+        if s:
+            found = True
+            episodes_deleted(c, key, name, sonarr, s, ev, season, numbers)
+    if not found:
+        log("  no Sonarr match for the series")
+
+
+def episodes_deleted(c, key, name, sonarr, s, ev, season, numbers):
+    dirs = os.listdir(local(s["path"])) if os.path.isdir(local(s["path"])) else []
     season_dirs = [d for d in dirs if re.fullmatch(r"Season \d+|Specials", d, re.I)]
     if numbers is None and any(re.fullmatch(rf"Season 0*{season}" + ("|Specials" if season == 0 else ""), d, re.I) for d in season_dirs):
         # same idea as on_series: a deleted season loses its folder; an emptied one doesn't
@@ -547,20 +800,35 @@ def on_episodes(c, ev, season, numbers=None):
         eps = [e for e in eps if e.get("airDateUtc") and e["airDateUtc"] <= now]
     if numbers is not None:
         eps = [e for e in eps if ev.get("tvdb_id") and e.get("tvdbId") == ev["tvdb_id"]] or [e for e in eps if e["episodeNumber"] in numbers]
+    if eps and any(e.get("episodeFileId") for e in eps):
+        fpath = {f["id"]: f["path"] for f in sonarr("GET", "/episodefile", seriesId=s["id"])}
+        kept = [e for e in eps if e.get("episodeFileId") and on_disk(fpath.get(e["episodeFileId"]))]
+        if kept:
+            log(f"  '{s['title']}' {episodes_label(kept)} still {'have their files' if len(kept) > 1 else 'has its file'} in {name}, so "
+                f"{'those copies stay' if len(kept) > 1 else 'that copy stays'}")
+            eps = [e for e in eps if e not in kept]
+            if not eps:
+                return
     if not eps:
-        return log(f"  no matching episodes in Sonarr for '{s['title']}'")
-    ids = sorted(e["id"] for e in eps)
+        return log(f"  no matching episodes in {name} for '{s['title']}'")
     label = f"'{s['title']}' S{season:02d}" + ("" if numbers is None else "".join(f"E{e['episodeNumber']:02d}" for e in eps))
-    hashes = {h["downloadId"] for h in sonarr("GET", "/history/series", seriesId=s["id"], seasonNumber=season)
+    remove_episodes(c, key, name, sonarr, s, eps, label, season if numbers is None and not flat else None)
+
+
+def remove_episodes(c, key, name, sonarr, s, eps, label, season=None):
+    """Episodes deleted from the library: queue their torrents, unmonitor them (and the season, when a whole season with
+    its folder went) and drop their file records. The show stays for new episodes."""
+    ids = sorted(e["id"] for e in eps)
+    hashes = {h["downloadId"] for h in sonarr("GET", "/history/series", seriesId=s["id"])
               if h.get("downloadId") and h.get("episodeId") in ids}
-    season_was = numbers is None and not flat and any(x["seasonNumber"] == season and x["monitored"] for x in s["seasons"])
-    snap = {"kind": "episodes", "series_id": s["id"], "title": s["title"],
+    season_was = season is not None and any(x["seasonNumber"] == season and x["monitored"] for x in s["seasons"])
+    snap = {"kind": "episodes", "app": key, "series_id": s["id"], "title": s["title"],
             "remonitor": [e["id"] for e in eps if e["monitored"]], "seasons": [season] if season_was else []}
-    queue_torrents(hashes, label, "season" if numbers is None else "episode", snap, secrets.token_hex(6))
+    queue_torrents(hashes, label, "season" if season is not None else "episode", snap, secrets.token_hex(6))
     bh = behavior()
     if bh["unmonitor"]:
-        act(c, f"unmonitored {label} in Sonarr", lambda: sonarr("PUT", "/episode/monitor", {"episodeIds": ids, "monitored": False}))
-    if numbers is None and not flat and bh["unmonitor"]:
+        act(c, f"unmonitored {label} in {name}", lambda: sonarr("PUT", "/episode/monitor", {"episodeIds": ids, "monitored": False}))
+    if season is not None and bh["unmonitor"]:
         def unmonitor_season():
             full = sonarr("GET", f"/series/{s['id']}")
             for x in full["seasons"]:
@@ -570,11 +838,13 @@ def on_episodes(c, ev, season, numbers=None):
         act(c, f"unmonitored season {season} of '{s['title']}'", unmonitor_season)
     files = sorted({e["episodeFileId"] for e in eps if e.get("episodeFileId")})
     if files and bh["remove_episode_files"]:
-        act(c, f"removed {len(files)} episode file record(s) of {label} from Sonarr",
+        act(c, f"removed {len(files)} episode file record(s) of {label} from {name}",
             lambda: sonarr("DELETE", "/episodefile/bulk", {"episodeFileIds": files}))
 
 
 def handle(ev):
+    if ev.get("disk_deletes"):
+        return disk_deletes(ev["disk_deletes"])
     if jf_id(ev.get("item_id")) in suppressed:  # deleted by Shredarr itself (Delete now); already handled
         return
     c = cfg()
@@ -601,17 +871,17 @@ _qb = None
 _lib_cache = {}
 
 
-def qcall(path, form=None, **q):
-    """qBittorrent call over a shared session, logging in again when it expires."""
+def tc(method, *args):
+    """A torrent client call over a shared session, signing in again when the session expires."""
     global _qb
     for attempt in (0, 1):
         try:
             if _qb is None:
-                _qb = QBit(cfg()["qbittorrent"])
-            return _qb(path, form, **q)
-        except urllib.error.HTTPError as e:
+                _qb = make_client(client_kind(), cfg()[client_kind()])
+            return getattr(_qb, method)(*args)
+        except (urllib.error.HTTPError, RuntimeError) as e:
             _qb = None
-            if e.code != 403 or attempt:
+            if attempt or (isinstance(e, urllib.error.HTTPError) and e.code not in (401, 403, 409)):
                 raise
 
 
@@ -634,8 +904,9 @@ def remote(p):
     return p
 
 
-def torrents(**q):
-    ts = qcall("/torrents/info", **q)
+def torrents(hashes=None):
+    """All torrents (or the given hashes) in qBittorrent's shape, with paths as this container sees them."""
+    ts = tc("torrents", [hashes] if isinstance(hashes, str) else hashes)
     for t in ts:
         t["content_path"], t["save_path"] = local(t["content_path"]), local(t["save_path"])
     return ts
@@ -647,13 +918,13 @@ _roots = {"t": 0, "dirs": []}
 def root_dirs():
     """Sonarr/Radarr root folders as this container sees them (refreshed every 5 minutes)."""
     if time.time() - _roots["t"] > 300:
-        c, dirs = cfg(), []
-        for app in ("sonarr", "radarr"):
+        dirs = []
+        for _, _, _, conf in arr_instances():
             try:
-                dirs += [local(r["path"].rstrip("/")) for r in Arr(c[app])("GET", "/rootfolder")]
+                dirs += [local(r["path"].rstrip("/")) for r in Arr(conf)("GET", "/rootfolder")]
             except Exception:
                 pass
-        _roots.update(t=time.time(), dirs=dirs)
+        _roots.update(t=time.time(), dirs=sorted(set(dirs)))
     return _roots["dirs"]
 
 
@@ -675,21 +946,26 @@ def import_map(max_age=300):
     """torrent hash -> library imports recorded by Sonarr/Radarr ({app, path, movieId, seriesId, episodeId})."""
     if time.time() - _imports["t"] < max_age:
         return _imports["map"]
-    c, m, owner = cfg(), {}, {}
-    for app in ("sonarr", "radarr"):
-        a, page = Arr(c[app]), 1
-        while True:  # newest first, so the first import seen for a path is the one that's there now
-            r = a("GET", "/history", page=page, pageSize=1000, eventType=3, sortKey="date", sortDirection="descending")  # 3 = downloadFolderImported
-            for h in r["records"]:
-                if h.get("downloadId"):
-                    path = library_path((h.get("data") or {}).get("importedPath"))
-                    m.setdefault(h["downloadId"].lower(), []).append(
-                        {"app": app, "path": path, "movieId": h.get("movieId"), "seriesId": h.get("seriesId"), "episodeId": h.get("episodeId")})
-                    if path:
-                        owner.setdefault(path, h["downloadId"].lower())
-            if page * 1000 >= r["totalRecords"]:
-                break
-            page += 1
+    m, owner = {}, {}
+    for app, _, name, conf in arr_instances():
+        a, page = Arr(conf), 1
+        try:
+            while True:  # newest first, so the first import seen for a path is the one that's there now
+                r = a("GET", "/history", page=page, pageSize=1000, eventType=3, sortKey="date", sortDirection="descending")  # 3 = downloadFolderImported
+                for h in r["records"]:
+                    if h.get("downloadId"):
+                        path = library_path((h.get("data") or {}).get("importedPath"))
+                        m.setdefault(h["downloadId"].lower(), []).append(
+                            {"app": app, "path": path, "movieId": h.get("movieId"), "seriesId": h.get("seriesId"), "episodeId": h.get("episodeId")})
+                        if path:
+                            owner.setdefault(path, h["downloadId"].lower())
+                if page * 1000 >= r["totalRecords"]:
+                    break
+                page += 1
+        except Exception as e:
+            if app in ARR_KINDS:
+                raise
+            print(f"history of {name}:", e, flush=True)  # an extra instance being down shouldn't stop everything
     _imports.update(t=time.time(), map=m, owner=owner)
     return m
 
@@ -833,9 +1109,9 @@ def remove_torrents(hashes, ts):
                 n += st.st_size
         freed[h] = n if paths else t["size"]
     if with_data:
-        qcall("/torrents/delete", {"hashes": "|".join(with_data), "deleteFiles": "true"})
+        tc("remove", with_data, True)
     if without:
-        qcall("/torrents/delete", {"hashes": "|".join(without), "deleteFiles": "false"})
+        tc("remove", without, False)
     for h in hashes:
         ts.pop(h, None)
     return freed, set(without)
@@ -851,9 +1127,9 @@ def indexer_info(max_age=600):
     if time.time() - _indexers["t"] < max_age:
         return _indexers
     c, by_hash, prow = cfg(), {}, []
-    for app in ("sonarr", "radarr"):
+    for _, _, _, conf in arr_instances(c=c):
         try:
-            a, page = Arr(c[app]), 1
+            a, page = Arr(conf), 1
             while True:
                 r = a("GET", "/history", page=page, pageSize=1000, eventType=1)  # 1 = grabbed
                 for h in r["records"]:
@@ -917,13 +1193,16 @@ _titles = {"t": 0, "series": {}, "movies": {}}
 def titles():
     """Sonarr/Radarr id -> title, refreshed every 5 minutes (for per-show rules and labels)."""
     if time.time() - _titles["t"] > 300:
-        c = cfg()
-        try:
-            _titles["series"] = {x["id"]: x["title"] for x in Arr(c["sonarr"])("GET", "/series")}
-            _titles["movies"] = {x["id"]: x["title"] for x in Arr(c["radarr"])("GET", "/movie")}
-        except Exception:
-            pass
-        _titles["t"] = time.time()
+        series, movies = {}, {}
+        for key, kind, _, conf in arr_instances():
+            try:
+                if kind == "sonarr":
+                    series.update({(key, x["id"]): x["title"] for x in Arr(conf)("GET", "/series")})
+                else:
+                    movies.update({(key, x["id"]): x["title"] for x in Arr(conf)("GET", "/movie")})
+            except Exception:
+                pass
+        _titles.update(t=time.time(), series=series or _titles["series"], movies=movies or _titles["movies"])
     return _titles
 
 
@@ -931,10 +1210,10 @@ def title_of(h, pend_name=None):
     imps = import_map().get(h, [])
     tl = titles()
     for i in imps:
-        if i["app"] == "sonarr" and i.get("seriesId") in tl["series"]:
-            return tl["series"][i["seriesId"]]
-        if i["app"] == "radarr" and i.get("movieId") in tl["movies"]:
-            return tl["movies"][i["movieId"]]
+        if (i["app"], i.get("seriesId")) in tl["series"]:
+            return tl["series"][(i["app"], i["seriesId"])]
+        if (i["app"], i.get("movieId")) in tl["movies"]:
+            return tl["movies"][(i["app"], i["movieId"])]
     return re.sub(r"^'([^']+)'.*$", r"\1", pend_name) if pend_name else None
 
 
@@ -983,7 +1262,7 @@ SERIES_KEYS = ("tvdbId", "title", "qualityProfileId", "path", "seasonFolder", "s
 def capture_restore(t):
     """Right before a torrent is deleted for good: what it was (movie / show + episodes, with Sonarr/Radarr settings)
     and a copy of its .torrent file, so it can be downloaded again later from History."""
-    h, c = t["hash"], cfg()
+    h = t["hash"]
     with db() as con:
         row = con.execute("select undo, content from pending where hash=?", (h,)).fetchone()
     snap = json.loads(row[0]) if row and row[0] else {}
@@ -993,25 +1272,27 @@ def capture_restore(t):
             content = torrent_content(h)
         except Exception:
             content = {"episodes": []}
-    out = {"hash": h, "name": t["name"], "category": t.get("category"), "episodes": content.get("episodes") or [], "movie": None, "series": None}
+    app = snap.get("app") or content.get("app")
+    out = {"hash": h, "name": t["name"], "category": t.get("category"), "episodes": content.get("episodes") or [], "movie": None,
+           "series": None, "app": app}
     try:
         if snap.get("kind") == "movie":
             out["movie"] = snap["movie"]
         elif content.get("movieId"):
-            m = Arr(c["radarr"])("GET", f"/movie/{content['movieId']}")
+            m = arr_api(app or "radarr")("GET", f"/movie/{content['movieId']}")
             out["movie"] = {k: m.get(k) for k in MOVIE_KEYS}
         if snap.get("kind") == "series":
             out["series"] = {**snap["series"], "seasons": snap["seasons"]}
         else:
             sid = snap.get("series_id") or content.get("seriesId")
             if sid:
-                sr = Arr(c["sonarr"])("GET", f"/series/{sid}")
+                sr = arr_api(app or "sonarr")("GET", f"/series/{sid}")
                 out["series"] = {**{k: sr.get(k) for k in SERIES_KEYS}, "seasons": [[x["seasonNumber"], x["monitored"]] for x in sr["seasons"]]}
     except Exception as e:
         print("capture_restore:", e, flush=True)
     try:
-        data = qcall("/torrents/export", hash=h)
-        if isinstance(data, bytes) and data.startswith(b"d"):
+        data = tc("export", h)
+        if data:
             os.makedirs(TORRENT_DIR, exist_ok=True)
             with open(os.path.join(TORRENT_DIR, h + ".torrent"), "wb") as f:
                 f.write(data)
@@ -1049,7 +1330,7 @@ def check(c, t, name, r, added=None, ctx=None):
     """Returns a status string, or None once the torrent is gone. r is the rule that applies. ctx carries all torrents,
     the cross-seed groups, what's queued, and collects torrents that went along with this one."""
     if not t:
-        log(f"torrent for {name} is gone from qBittorrent; dropping it from the queue")
+        log(f"torrent for {name} is gone from {client_name()}; dropping it from the queue")
         return None
     if t["progress"] < 1:
         return "still downloading"
@@ -1254,10 +1535,11 @@ def seerr_step(c, kind, tmdb, title):
 
 def media_steps(c, paths, movies=(), series=()):
     """Steps that remove media everywhere: the library files at paths from Jellyfin (which deletes them), movies from
-    Radarr (and Seerr), and episodes in Sonarr (unmonitored, file records removed; the series itself stays so new
-    episodes keep coming). series = [(series, [episodes])]."""
-    steps, bh = [], behavior()
-    targets = {tail(p) for p in paths}
+    Radarr (and Seerr), and episodes in Sonarr (unmonitored, files removed; the series itself stays so new episodes keep
+    coming). With Plex, Sonarr/Radarr delete the files and Plex rescans. movies = [(instance key, movie)],
+    series = [(instance key, series, [episodes])]."""
+    steps, bh, plex_mode = [], behavior(), media_kind(c) == "plex"
+    targets = {tail(p) for p in paths} if not plex_mode else set()
     if targets:
         items = jellyfin("GET", "/Items", recursive="true", fields="Path", includeItemTypes="Movie,Episode,Video",
                          enableImages="false", enableUserData="false")["Items"]
@@ -1269,22 +1551,24 @@ def media_steps(c, paths, movies=(), series=()):
             labels += [f"'{i['Name']}'" for i in hits if i.get("Type") != "Episode"]
             steps.append((f"Delete {', '.join(labels)} from Jellyfin (and its library files)",
                           lambda hits=hits: [jf_delete(i["Id"]) for i in hits]))
-    radarr, sonarr = Arr(c["radarr"]), Arr(c["sonarr"])
-    for m in movies:
-        excl = bh["import_exclusion"]
-        steps.append((f"Remove '{m['title']}' from Radarr, with its files" + (" (and add an import exclusion)" if excl else ""),
-                      lambda m=m: radarr("DELETE", f"/movie/{m['id']}", deleteFiles="true", addImportExclusion=str(excl).lower())))
+    for key, m in movies:
+        excl, radarr = bh["import_exclusion"], arr_api(key)
+        steps.append((f"Remove '{m['title']}' from {arr_name(key)}, with its files" + (" (and add an import exclusion)" if excl else ""),
+                       lambda m=m, radarr=radarr: radarr("DELETE", f"/movie/{m['id']}", deleteFiles="true", addImportExclusion=str(excl).lower())))
         if bh["remove_from_seerr"]:
             steps.append(seerr_step(c, "movie", m.get("tmdbId"), m["title"]))
-    for s, mine in series:
-        label = f"'{s['title']}' {episodes_label(mine)}"
+    for key, s, mine in series:
+        label, sonarr = f"'{s['title']}' {episodes_label(mine)}", arr_api(key)
         ids = sorted(e["id"] for e in mine)
         if bh["unmonitor"]:
-            steps.append((f"Unmonitor {label} in Sonarr", lambda ids=ids: sonarr("PUT", "/episode/monitor", {"episodeIds": ids, "monitored": False})))
+            steps.append((f"Unmonitor {label} in {arr_name(key)}",
+                          lambda ids=ids, sonarr=sonarr: sonarr("PUT", "/episode/monitor", {"episodeIds": ids, "monitored": False})))
         files = sorted({e["episodeFileId"] for e in mine if e.get("episodeFileId")})
         if files:
-            steps.append((f"Remove {label} files from Sonarr",
-                          lambda files=files: sonarr("DELETE", "/episodefile/bulk", {"episodeFileIds": files})))
+            steps.append((f"{'Delete' if plex_mode else 'Remove'} {label} files {'with' if plex_mode else 'from'} {arr_name(key)}",
+                          lambda files=files, sonarr=sonarr: sonarr("DELETE", "/episodefile/bulk", {"episodeFileIds": files})))
+    if plex_mode and paths:
+        steps.append(("Rescan Plex so it drops the deleted files", lambda: media_rescan(paths, deleted=True)))
     return [x for x in steps if x]
 
 
@@ -1306,45 +1590,45 @@ def build_plan(c, h):
     def from_elsewhere(p):
         """True if this library file exists and isn't one of this torrent's."""
         return verify and bool(p) and os.path.exists(p) and file_key(p) not in keys and p not in paths
-    radarr, sonarr = Arr(c["radarr"]), Arr(c["sonarr"])
     notes, movies, series = [], [], []
-    for mid in sorted({i["movieId"] for i in imps if i["app"] == "radarr" and i["movieId"]}):
+    for key, mid in sorted({(i["app"], i["movieId"]) for i in imps if kind_of(i["app"]) == "radarr" and i["movieId"]}):
         try:
-            m = radarr("GET", f"/movie/{mid}")
-        except urllib.error.HTTPError:
+            m = arr_api(key)("GET", f"/movie/{mid}")
+        except (urllib.error.HTTPError, RuntimeError):
             continue
         if m.get("hasFile") and from_elsewhere(local((m.get("movieFile") or {}).get("path"))):
-            notes.append((f"Keep '{m['title']}' in Radarr and Jellyfin: its current file came from a different download", None))
+            notes.append((f"Keep '{m['title']}' in {arr_name(key)} and {media_name()}: its current file came from a different download", None))
         else:
-            movies.append(m)
+            movies.append((key, m))
     by_series = {}
     for i in imps:
-        if i["app"] == "sonarr" and i["episodeId"]:
-            by_series.setdefault(i["seriesId"], set()).add(i["episodeId"])
-    for sid, epids in by_series.items():
+        if kind_of(i["app"]) == "sonarr" and i["episodeId"]:
+            by_series.setdefault((i["app"], i["seriesId"]), set()).add(i["episodeId"])
+    for (key, sid), epids in by_series.items():
         try:
+            sonarr = arr_api(key)
             s = sonarr("GET", f"/series/{sid}")
-        except urllib.error.HTTPError:
+        except (urllib.error.HTTPError, RuntimeError):
             continue
         eps = [e for e in sonarr("GET", "/episode", seriesId=sid) if e["id"] in epids]
         fpath = {f["id"]: local(f["path"]) for f in sonarr("GET", "/episodefile", seriesId=sid)} if any(e.get("episodeFileId") for e in eps) else {}
         other = [e for e in eps if e.get("episodeFileId") and from_elsewhere(fpath.get(e["episodeFileId"]))]
         if other:
-            notes.append((f"Keep '{s['title']}' {episodes_label(other)} in Sonarr and Jellyfin: "
+            notes.append((f"Keep '{s['title']}' {episodes_label(other)} in {arr_name(key)} and {media_name()}: "
                           f"{'their current files' if len(other) > 1 else 'its current file'} came from a different download", None))
         mine = [e for e in eps if e not in other]
         if mine:
-            series.append((s, mine))
+            series.append((key, s, mine))
     steps = media_steps(c, paths, movies, series) + notes
     freed = {}
     for x in group:
         if x in ts:
             what = "cross-seed torrent" if x != h else "torrent"
             steps.append((f"Delete {what} '{ts[x]['name']}'" + (f" ({tracker_host(ts[x])})" if x != h and tracker_host(ts[x]) else "")
-                          + " and its downloaded data from qBittorrent", lambda x=x: freed.update(remove_torrents([x], ts)[0])))
-    if t and not imps:  # not managed by Sonarr/Radarr (e.g. Courses, which Jellyfin reads straight from the download folder)
-        steps.append(("Rescan the Jellyfin library so it drops the deleted files", lambda: jellyfin("POST", "/Library/Refresh")))
-    return t, steps, {"group": [x for x in group if x in ts], "ts": dict(ts), "freed": freed}
+                          + f" and its downloaded data from {client_name()}", lambda x=x: freed.update(remove_torrents([x], ts)[0])))
+    if t and not imps:  # not managed by Sonarr/Radarr (e.g. Courses, which the media server reads straight from the download folder)
+        steps.append((f"Rescan the {media_name()} library so it drops the deleted files", media_refresh_all))
+    return t, steps, {"group": [x for x in group if x in ts], "ts": dict(ts), "freed": freed, "paths": paths}
 
 
 def delete_now(h):
@@ -1356,6 +1640,8 @@ def delete_now(h):
     log(f"Delete now: {t['name'] if t else h}")
     all_ts, group = info["ts"], info["group"]
     restores = {x: ({"cross_seed_of": t["name"]} if x != h else capture_restore(all_ts[x])) for x in group} if not c.get("dry_run") else {}
+    if not c.get("dry_run"):
+        watch_suppress(info["paths"])
     for desc, fn in steps:
         if fn is None:
             log(f"  {desc}")
@@ -1386,7 +1672,7 @@ _orphans = {"t": 0, "items": []}
 
 
 def torrent_file_check():
-    """A function telling whether a library file still belongs to a torrent in qBittorrent: it is one of a torrent's
+    """A function telling whether a library file still belongs to a torrent in the torrent client: it is one of a torrent's
     files (hardlink), or it was last imported from a torrent that's still there (RAR releases). Files that can't be
     read count as belonging, so nothing is offered for deletion by mistake."""
     ts = torrents()
@@ -1401,26 +1687,28 @@ def torrent_file_check():
 
 
 def media_without_torrent(max_age=300):
-    """Movies and seasons in Sonarr/Radarr whose files don't come from any torrent in qBittorrent anymore, biggest first."""
+    """Movies and seasons in Sonarr/Radarr whose files don't come from any torrent in the torrent client anymore, biggest first."""
     if time.time() - _orphans["t"] < max_age:
         return _orphans
-    c, has_torrent, items = cfg(), torrent_file_check(), []
-    for m in Arr(c["radarr"])("GET", "/movie"):
-        f = m.get("movieFile")
-        if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
-            items.append({"id": f"radarr:{m['id']}", "app": "radarr", "title": m["title"], "year": m.get("year"), "what": "Movie",
-                          "size": f.get("size") or 0, "files": 1, "linked": nlink(p) > 1, "path": p})
-    sonarr = Arr(c["sonarr"])
-    for s in sonarr("GET", "/series"):
-        if not (s.get("statistics") or {}).get("episodeFileCount"):
-            continue
-        lone = {f["id"]: f for f in sonarr("GET", "/episodefile", seriesId=s["id"]) if not has_torrent(local(f["path"]))}
-        if not lone:
-            continue
-        eps = [e for e in sonarr("GET", "/episode", seriesId=s["id"]) if e.get("episodeFileId") in lone]
-        for sn in sorted({f["seasonNumber"] for f in lone.values()}):
-            fs = [f for f in lone.values() if f["seasonNumber"] == sn]
-            items.append({"id": f"sonarr:{s['id']}:{sn}", "app": "sonarr", "title": s["title"], "year": s.get("year"),
+    has_torrent, items = torrent_file_check(), []
+    for key, kind, name, conf in arr_instances("radarr"):
+        for m in Arr(conf)("GET", "/movie"):
+            f = m.get("movieFile")
+            if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
+                items.append({"id": f"{key}:{m['id']}", "app": key, "kind": kind, "instance": name, "title": m["title"], "year": m.get("year"),
+                              "what": "Movie", "size": f.get("size") or 0, "files": 1, "linked": nlink(p) > 1, "path": p})
+    for key, kind, name, conf in arr_instances("sonarr"):
+        sonarr = Arr(conf)
+        for s in sonarr("GET", "/series"):
+            if not (s.get("statistics") or {}).get("episodeFileCount"):
+                continue
+            lone = {f["id"]: f for f in sonarr("GET", "/episodefile", seriesId=s["id"]) if not has_torrent(local(f["path"]))}
+            if not lone:
+                continue
+            eps = [e for e in sonarr("GET", "/episode", seriesId=s["id"]) if e.get("episodeFileId") in lone]
+            for sn in sorted({f["seasonNumber"] for f in lone.values()}):
+                fs = [f for f in lone.values() if f["seasonNumber"] == sn]
+                items.append({"id": f"{key}:{s['id']}:{sn}", "app": key, "kind": kind, "instance": name, "title": s["title"], "year": s.get("year"),
                           "what": episodes_label([e for e in eps if e["seasonNumber"] == sn]) or f"Season {sn}",
                           "size": sum(f.get("size") or 0 for f in fs), "files": len(fs),
                           "linked": any(nlink(local(f["path"])) > 1 for f in fs), "path": os.path.dirname(local(fs[0]["path"]))})
@@ -1431,40 +1719,42 @@ def media_without_torrent(max_age=300):
 
 def orphan_plan(c, ids):
     """Delete steps for items from media_without_torrent (checked again, in case a torrent showed up meanwhile).
-    Returns (steps, [(label, size, restore info)])."""
-    has_torrent, radarr, sonarr = torrent_file_check(), Arr(c["radarr"]), Arr(c["sonarr"])
+    Returns (steps, [(label, size, restore info)], library paths)."""
+    has_torrent = torrent_file_check()
     paths, movies, series, done = set(), [], [], []
     for i in ids:
         app, *rest = str(i).split(":")
-        if app == "radarr" and rest:
-            m = radarr("GET", f"/movie/{int(rest[0])}")
+        if kind_of(app) == "radarr" and rest:
+            m = arr_api(app)("GET", f"/movie/{int(rest[0])}")
             f = m.get("movieFile")
             if m.get("hasFile") and f and not has_torrent(p := local(f["path"])):
                 paths.add(p)
-                movies.append(m)
+                movies.append((app, m))
                 done.append((m["title"], f.get("size") or 0 if nlink(p) <= 1 else 0,
-                             {"movie": {k: m.get(k) for k in MOVIE_KEYS}, "episodes": []}))
-        elif app == "sonarr" and len(rest) == 2:
-            sid, sn = int(rest[0]), int(rest[1])
+                             {"app": app, "movie": {k: m.get(k) for k in MOVIE_KEYS}, "episodes": []}))
+        elif kind_of(app) == "sonarr" and len(rest) == 2:
+            sid, sn, sonarr = int(rest[0]), int(rest[1]), arr_api(app)
             s = sonarr("GET", f"/series/{sid}")
             lone = {f["id"]: f for f in sonarr("GET", "/episodefile", seriesId=sid)
                     if f["seasonNumber"] == sn and not has_torrent(local(f["path"]))}
             eps = [e for e in sonarr("GET", "/episode", seriesId=sid) if e.get("episodeFileId") in lone]
             if eps:
                 paths |= {local(f["path"]) for f in lone.values()}
-                series.append((s, eps))
+                series.append((app, s, eps))
                 done.append((f"{s['title']} {episodes_label(eps)}", sum(f.get("size") or 0 for f in lone.values() if nlink(local(f["path"])) <= 1),
-                             {"series": {**{k: s.get(k) for k in SERIES_KEYS}, "seasons": [[x["seasonNumber"], x["monitored"]] for x in s["seasons"]]},
+                             {"app": app, "series": {**{k: s.get(k) for k in SERIES_KEYS}, "seasons": [[x["seasonNumber"], x["monitored"]] for x in s["seasons"]]},
                               "episodes": sorted([e["seasonNumber"], e["episodeNumber"]] for e in eps)}))
-    return media_steps(c, paths, movies, series), done
+    return media_steps(c, paths, movies, series), done, paths
 
 
 def delete_orphans(ids):
     c = cfg()
     try:
-        steps, done = orphan_plan(c, ids)
+        steps, done, paths = orphan_plan(c, ids)
     except Exception as e:
         return log(f"Deleting media with no torrent failed while planning: {e!r}")
+    if not c.get("dry_run"):
+        watch_suppress(paths)
     log(f"Delete media with no torrent: {', '.join(x[0] for x in done) or 'nothing left to delete'}")
     for desc, fn in steps:
         if c.get("dry_run"):
@@ -1532,20 +1822,26 @@ def undo_info(h):
     return t, rows, None
 
 
+def snap_app(snap):
+    """The Sonarr/Radarr instance an Undo snapshot belongs to."""
+    return snap.get("app") or ("radarr" if snap["kind"] == "movie" else "sonarr")
+
+
 def undo_steps(t, rows):
-    snap, app = rows[0][2], "Radarr" if rows[0][2]["kind"] == "movie" else "Sonarr"
+    snap = rows[0][2]
+    app = arr_name(snap_app(snap))
     if snap["kind"] == "movie":
-        first = f"Re-add '{snap['movie']['title']}' to Radarr with its previous settings (if it was removed)"
+        first = f"Re-add '{snap['movie']['title']}' to {app} with its previous settings (if it was removed)"
     elif snap["kind"] == "series":
-        first = f"Re-add '{snap['series']['title']}' to Sonarr with its previous settings and monitoring"
+        first = f"Re-add '{snap['series']['title']}' to {app} with its previous settings and monitoring"
     else:
-        first = f"Monitor {rows[0][1]} again in Sonarr"
+        first = f"Monitor {rows[0][1]} again in {app}"
     n = len(rows)
     middle = (f"Have {app} re-import the file{'s' if n > 1 else ''} from {'these torrents' if n > 1 else 'this torrent'}'s download, "
-              "so it's back in your library and Jellyfin")
+              f"so it's back in your library and {media_name()}")
     if restorable(t) == "rar":
         middle = (f"Unpack it again from the torrent's RAR files (takes a minute or two), then have {app} import it, "
-                  "so it's back in your library and Jellyfin")
+                  f"so it's back in your library and {media_name()}")
     return [first, middle,
             f"Take {'these torrents' if n > 1 else 'the torrent'} off the cleanup list. "
             f"{'They keep' if n > 1 else 'It keeps'} seeding as normal"]
@@ -1638,8 +1934,54 @@ def reimport(arr, kind, t, path=None):
     if not n:
         raise RuntimeError(f"nothing was imported ({(done or {}).get('status', 'timed out')}); see Activity → History in "
                            f"{'Radarr' if kind == 'movie' else 'Sonarr'} for the reason")
-    jellyfin_rescan([i["path"] for i in import_map(0).get(t["hash"], []) if i["path"] and os.path.exists(i["path"])])
+    media_rescan([i["path"] for i in import_map(0).get(t["hash"], []) if i["path"] and os.path.exists(i["path"])])
     return f"{n} file{'s' * (n != 1)} back in the library"
+
+
+def media_rescan(paths, deleted=False):
+    """Tell the media server about restored (or, with Plex, deleted) library files."""
+    if media_kind() == "plex":
+        plex_rescan(paths, deleted)
+    elif not deleted:
+        jellyfin_rescan(paths)
+
+
+def media_refresh_all():
+    if media_kind() == "plex":
+        for s in plex("GET", "/library/sections")["MediaContainer"].get("Directory", []):
+            plex("GET", f"/library/sections/{s['key']}/refresh")
+    else:
+        jellyfin("POST", "/Library/Refresh")
+
+
+def plex(method, endpoint, **q):
+    p = cfg()["plex"]
+    return call(method, p["url"].rstrip("/") + endpoint + ("?" + urllib.parse.urlencode(q) if q else ""),
+                {"X-Plex-Token": p.get("api_key", ""), "Accept": "application/json"})
+
+
+def plex_rescan(paths, deleted=False):
+    """Partial Plex scans of the folders restored files are in. Plex may see the library at another path, so each file is
+    mapped onto Plex's own library folders by folder name. After deletes, the whole library section is scanned instead:
+    Plex merges a movie's versions from different folders (1080p and 4K) into one item, and a scan of only one folder
+    would drop the other version too until its folder is scanned."""
+    try:
+        sections = plex("GET", "/library/sections")["MediaContainer"].get("Directory", [])
+    except Exception as e:
+        return print("plex rescan:", e, flush=True)
+    todo = set()
+    for p in paths:
+        for s in sections:
+            for loc in s.get("Location", []):
+                name = "/" + os.path.basename(loc["path"].rstrip("/")) + "/"
+                i = p.find(name)
+                if i >= 0:
+                    todo.add((s["key"], None if deleted else os.path.dirname(loc["path"].rstrip("/") + p[i + len(name) - 1:])))
+    for key, folder in todo:
+        try:
+            plex("GET", f"/library/sections/{key}/refresh", **({"path": folder} if folder else {}))
+        except Exception as e:
+            print("plex rescan:", e, flush=True)
 
 
 def jellyfin_rescan(paths, again=True):
@@ -1741,7 +2083,7 @@ def do_undo(h):
         return log(f"Undo failed: {problem}")
     snap = rows[0][2]
     kind = "movie" if snap["kind"] == "movie" else "tv"
-    arr = Arr(c["radarr"] if kind == "movie" else c["sonarr"])
+    arr = arr_api(snap_app(snap))
     log(f"Undo: {rows[0][1]}")
     def step(fn):
         try:
@@ -1859,43 +2201,49 @@ def test_service(svc, conf):
     url = (conf or {}).get("url", "").strip().rstrip("/")
     if not url:
         raise RuntimeError("no address set")
+    svc = kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
     if svc in ("sonarr", "radarr", "prowlarr"):
         r = Arr({"url": api_url(svc, url), "api_key": conf.get("api_key", "")})("GET", "/system/status")
         return f"{r.get('appName', SERVICES[svc])} {r.get('version', '')}".strip()
+    if svc in CLIENTS:
+        return make_client(svc, {"username": "", "password": "", **conf, "url": url}).version()
+    if svc == "plex":
+        r = call("GET", url + "/", {"X-Plex-Token": conf.get("api_key", ""), "Accept": "application/json"})["MediaContainer"]
+        return f"Plex {r.get('version', '').split('-')[0]} · {r.get('friendlyName', '')}"
     if svc == "seerr":
         seerr = Arr({"url": api_url(svc, url), "api_key": conf.get("api_key", "")})
         seerr("GET", "/settings/main")  # needs a valid API key
         return "Seerr " + (seerr("GET", "/status").get("version") or "")
-    if svc == "qbittorrent":
-        q = QBit({"url": url, "username": conf.get("username", ""), "password": conf.get("password", "")})
-        v = q("/app/version")
-        if not v or b"Forbidden" in (v if isinstance(v, bytes) else b""):
-            raise RuntimeError("wrong username or password")
-        return "qBittorrent " + (v.decode() if isinstance(v, bytes) else str(v))
     if svc == "jellyfin":
         r = call("GET", url + "/System/Info", {"X-Emby-Token": conf.get("api_key", "")})
         return f"Jellyfin {r.get('Version', '')} · {r.get('ServerName', '')}"
     raise RuntimeError("unknown service")
 
 
+def connections(c):
+    """[(key, name, conf)] of every app Shredarr uses: Sonarr/Radarr instances, the torrent client, the media server,
+    and Seerr/Prowlarr if set up."""
+    out = [(k, name, conf) for k, _, name, conf in arr_instances(c=c)]
+    return out + [(k, SERVICES[k], c[k]) for k in (client_kind(c), media_kind(c), "seerr", "prowlarr") if (c.get(k) or {}).get("url")]
+
+
 def check_health():
     c = cfg()
-    for svc in SERVICES:
-        conf = c.get(svc)
-        if not conf or not conf.get("url"):
-            health.pop(svc, None)
-            continue
+    conns = connections(c)
+    for k in [k for k in health if k not in {x[0] for x in conns}]:
+        health.pop(k, None)
+    for svc, name, conf in conns:
         was = health.get(svc, {}).get("ok")
         try:
             info = test_service(svc, {**conf, "url": base_url(svc, conf["url"])})
             health[svc] = {"ok": True, "msg": info, "ts": time.time()}
             if was is False:
-                log(f"Connection restored: {SERVICES[svc]}")
+                log(f"Connection restored: {name}")
         except Exception as e:
             msg = f"HTTP {e.code}" + (" (check the API key)" if e.code in (401, 403) else "") if isinstance(e, urllib.error.HTTPError) else str(getattr(e, "reason", e))
-            health[svc] = {"ok": False, "msg": msg, "ts": time.time()}
+            health[svc] = {"ok": False, "msg": msg, "ts": time.time(), "name": name}
             if was is not False:
-                log(f"Connection FAILED: can't reach {SERVICES[svc]} ({msg})")
+                log(f"Connection FAILED: can't reach {name} ({msg})")
 
 
 def check_update():
@@ -1989,13 +2337,14 @@ def resolve_redownload(row_id):
         if info.get("cross_seed_of"):
             raise RuntimeError(f"it was a cross-seed of '{info['cross_seed_of']}'. Redownload that one instead")
         if info.get("movie") or info.get("series"):
-            info["app"] = "radarr" if info.get("movie") else "sonarr"
+            if kind_of(info.get("app")) not in ARR_KINDS or not any(x[0] == info["app"] for x in arr_instances()):
+                info["app"] = "radarr" if info.get("movie") else "sonarr"  # older entry, or that instance was removed since
             return info
-    c, info = cfg(), {"hash": h, "name": name, "category": category, "movie": None, "series": None, "episodes": []}
+    info = {"hash": h, "name": name, "category": category, "movie": None, "series": None, "episodes": []}
     order = ("sonarr", "radarr") if re.search(r"tv|sonarr|show|series", category or "", re.I) else ("radarr", "sonarr")
     for app in order:
         try:
-            arr = Arr(c[app])
+            arr = arr_api(app)
             pr = arr("GET", "/parse", title=name)
         except Exception:
             continue
@@ -2027,20 +2376,21 @@ def resolve_redownload(row_id):
 def redownload_plan(row_id):
     info = resolve_redownload(row_id)
     saved = bool(info.get("hash")) and os.path.isfile(os.path.join(TORRENT_DIR, info["hash"] + ".torrent"))
-    if info["app"] == "radarr":
+    app = arr_name(info["app"])
+    if kind_of(info["app"]) == "radarr":
         what = f"'{info['movie']['title']}'" + (f" ({info['movie']['year']})" if info["movie"].get("year") else "")
-        first = f"Put {what} back in Radarr (with its previous settings if Shredarr has them) and monitor it"
-        search = "Have Radarr search for it and grab the best release it finds"
+        first = f"Put {what} back in {app} (with its previous settings if Shredarr has them) and monitor it"
+        search = f"Have {app} search for it and grab the best release it finds"
     else:
         eps = episodes_text(info.get("episodes") or [])
         full = info.get("full_seasons") or []
         what = f"'{info['series']['title']}'" + (f" {eps}" if eps else (f" season {', '.join(map(str, full))}" if full else ""))
-        first = f"Put '{info['series']['title']}' back in Sonarr if it was removed, and monitor {eps or 'those episodes'}"
-        search = "Have Sonarr search for " + (eps or "them") + " (whole seasons as season packs)"
+        first = f"Put '{info['series']['title']}' back in {app} if it was removed, and monitor {eps or 'those episodes'}"
+        search = f"Have {app} search for " + (eps or "them") + " (whole seasons as season packs)"
     return {"what": what, "app": info["app"], "same_available": saved,
-            "steps": {"same": [first, f"Add the original torrent back to qBittorrent ({info['name']}), so the same release downloads again",
-                               "When it finishes, it's imported into your library and shows up in Jellyfin"],
-                      "search": [first, search, "When it finishes, it's imported into your library and shows up in Jellyfin"]}}
+            "steps": {"same": [first, f"Add the original torrent back to {client_name()} ({info['name']}), so the same release downloads again",
+                               f"When it finishes, it's imported into your library and shows up in {media_name()}"],
+                      "search": [first, search, f"When it finishes, it's imported into your library and shows up in {media_name()}"]}}
 
 
 def do_redownload(row_id, how):
@@ -2049,11 +2399,12 @@ def do_redownload(row_id, how):
         info = resolve_redownload(row_id)
     except Exception as e:
         return log(f"Redownload failed: {e}")
-    title = info["movie"]["title"] if info["app"] == "radarr" else info["series"]["title"]
-    log(f"Redownload: {title}" + (f" {episodes_text(info.get('episodes') or [])}" if info["app"] == "sonarr" else ""))
-    arr = Arr(c[info["app"]])
+    is_movie = kind_of(info["app"]) == "radarr"
+    title = info["movie"]["title"] if is_movie else info["series"]["title"]
+    log(f"Redownload: {title}" + ("" if is_movie else f" {episodes_text(info.get('episodes') or [])}"))
+    arr = arr_api(info["app"])
     try:
-        if info["app"] == "radarr":
+        if is_movie:
             log("  done: " + ensure_movie(arr, info["movie"]))
             m = arr("GET", "/movie", tmdbId=info["movie"]["tmdbId"])[0]
             if not m["monitored"]:
@@ -2086,16 +2437,13 @@ def do_redownload(row_id, how):
             path = os.path.join(TORRENT_DIR, (info.get("hash") or "") + ".torrent")
             with open(path, "rb") as f:
                 content = f.read()
-            global _qb
-            if _qb is None:
-                _qb = QBit(c["qbittorrent"])
-            _qb.upload("/torrents/add", {"category": info.get("category") or ""}, os.path.basename(path), content)
+            tc("add", content, os.path.basename(path), info.get("category") or "")
             with db() as con:
                 con.execute("insert or replace into redownloads (hash, ts, app, title, tries, last_try, done) values (?,?,?,?,0,0,0)",
                             (info["hash"], time.time(), info["app"], title))
-            log(f"  done: added the original torrent back to qBittorrent ({info['name']})")
+            log(f"  done: added the original torrent back to {client_name()} ({info['name']})")
         else:
-            if info["app"] == "radarr":
+            if is_movie:
                 arr("POST", "/command", {"name": "MoviesSearch", "movieIds": target["movieIds"]})
                 log("  done: asked Radarr to search for it")
             elif target["full_series"]:
@@ -2111,7 +2459,7 @@ def do_redownload(row_id, how):
                     + (" and " if target["whole"] and rest else "") + (f"{len(rest)} episode{'s' * (len(rest) != 1)}" if rest else ""))
         if c.get("seerr"):
             try:
-                Arr(c["seerr"])("POST", f"/settings/jobs/{info['app']}-scan/run")
+                Arr(c["seerr"])("POST", f"/settings/jobs/{kind_of(info['app'])}-scan/run")
             except Exception:
                 pass
         with db() as con:
@@ -2138,7 +2486,7 @@ def redownload_pass():
         if in_library(t):
             with db() as con:
                 con.execute("update redownloads set done=1 where hash=?", (h,))
-            jellyfin_rescan([i["path"] for i in import_map(0).get(h, []) if i["path"] and os.path.exists(i["path"])])
+            media_rescan([i["path"] for i in import_map(0).get(h, []) if i["path"] and os.path.exists(i["path"])])
             log(f"Redownload finished: '{title}' is back in your library")
             notify("Redownload finished", f"{title} is back in your library", "undo")
             continue
@@ -2146,12 +2494,163 @@ def redownload_pass():
             continue
         with db() as con:
             con.execute("update redownloads set tries=tries+1, last_try=? where hash=?", (time.time(), h))
-        arr, kind = Arr(cfg()[app]), "movie" if app == "radarr" else "tv"
+        arr, kind = arr_api(app), "movie" if kind_of(app) == "radarr" else "tv"
         try:
             how = unpack_restore(arr, kind, t) if restorable(t) == "rar" else reimport(arr, kind, t)
             log(f"Redownload of '{title}' imported: {how}")
         except Exception as e:
             log(f"Redownload of '{title}': import not done yet ({e})")
+
+
+# ---------- Plex: noticing deletes on disk ----------
+
+WATCH_FILE = os.path.join(os.path.dirname(CFG), "library-files.json")
+WATCH_CONFIRM = 100  # seconds a file must stay gone: an upgrade or rename replaces it within seconds
+_watch = {"files": None, "missing": {}, "offline": False}
+watch_skip = {}  # library path -> time: files Shredarr deleted itself (Delete now, No torrent), not reported as deletes
+
+
+def watch_suppress(paths):
+    now = time.time()
+    for p in paths:
+        watch_skip[p] = now
+    for p in [p for p, t in watch_skip.items() if now - t > 86400]:
+        watch_skip.pop(p, None)
+
+
+def library_files():
+    """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be read."""
+    dirs = root_dirs()
+    if not dirs or not all(os.path.isdir(d) for d in dirs):
+        return None
+    out = {}
+    for root in dirs:
+        for d, _, fs in os.walk(root):
+            for p in videos_in(os.path.join(d, f) for f in fs):
+                if k := file_key(p):
+                    out[p] = list(k)
+    return out
+
+
+def watch_pass():
+    """Plex can't tell Shredarr about deletes, so with Plex the library folders are watched instead. A video file that
+    disappears and stays gone (it wasn't renamed, or replaced by an upgrade) is handled like a delete in Jellyfin."""
+    now = library_files()
+    if now is None:
+        if not _watch["offline"]:
+            log("Library watch paused: a Sonarr/Radarr root folder can't be read (check the /data mount)")
+        _watch["offline"] = True
+        return
+    if _watch["offline"]:
+        log("Library watch resumed: all Sonarr/Radarr root folders can be read again")
+    _watch["offline"] = False
+    prev = _watch["files"]
+    if prev is None:
+        try:
+            with open(WATCH_FILE) as f:
+                prev = json.load(f)
+        except (OSError, ValueError):
+            prev = None
+    gone = [p for p in (prev or {}) if p not in now]
+    if prev and len(gone) > 20 and len(gone) > 0.2 * len(prev):
+        # a disk or share that went away isn't a delete: keep the old list and look again next time
+        return log(f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk going offline, "
+                   "not a delete, so nothing was done")
+    _watch["files"] = now
+    with open(WATCH_FILE + ".tmp", "w") as f:
+        json.dump(now, f)
+    os.replace(WATCH_FILE + ".tmp", WATCH_FILE)
+    moved = {tuple(k) for k in now.values()}
+    t = time.time()
+    for p in gone:
+        if tuple(prev[p]) not in moved and p not in watch_skip:
+            _watch["missing"].setdefault(p, t)
+    for p in list(_watch["missing"]):
+        if p in now:
+            _watch["missing"].pop(p)
+    ready = [p for p, since in _watch["missing"].items() if t - since >= WATCH_CONFIRM]
+    if ready:
+        for p in ready:
+            _watch["missing"].pop(p)
+        events.put({"disk_deletes": ready})  # handled by the worker, one event at a time like Jellyfin's
+
+
+def disk_deletes(paths):
+    """Library files that were deleted outside Shredarr (in Plex): clean up the movies and episodes they were, unless
+    Sonarr/Radarr already has another file for them (an upgrade)."""
+    c = cfg()
+    for key, kind, name, conf in arr_instances(c=c):
+        a = Arr(conf)
+        try:
+            if kind == "radarr":
+                movies = a("GET", "/movie")
+                for m in movies:
+                    root = local(m["path"]).rstrip("/") + "/"
+                    if not any(p.startswith(root) for p in paths):
+                        continue
+                    if m.get("hasFile") and on_disk((m.get("movieFile") or {}).get("path")):
+                        continue  # it has a (new) file, so this was an upgrade or a stray file
+                    log(f"{media_name()} deleted Movie: {m['title']} (noticed on disk, {name})")
+                    notify(f"Deleted in {media_name()}", f"Movie: {m['title']}", "jellyfin")
+                    others = [x for k2, _, _, cf in arr_instances("radarr", c) if k2 != key
+                              for x in Arr(cf)("GET", "/movie", tmdbId=m["tmdbId"]) if x.get("hasFile")]
+                    movie_removed(c, key, name, a, m, seerr=not others)
+            else:
+                disk_episode_deletes(c, key, name, a, paths)
+        except Exception as e:
+            log(f"  error while handling deletes in {name}: {e!r}")
+
+
+def disk_episode_deletes(c, key, name, sonarr, paths):
+    for s in sonarr("GET", "/series"):
+        root = local(s["path"]).rstrip("/") + "/"
+        hit = [p for p in paths if p.startswith(root)]
+        if not hit:
+            continue
+        files = {f["id"]: local(f["path"]) for f in sonarr("GET", "/episodefile", seriesId=s["id"])}
+        eps = sonarr("GET", "/episode", seriesId=s["id"])
+        gone = {}
+        for p in hit:
+            mine = [e for e in eps if e.get("episodeFileId") and files.get(e["episodeFileId"]) == p]
+            if not mine:  # Sonarr already dropped the file record: work the episodes out from the file name
+                try:
+                    pr = sonarr("GET", "/parse", title=os.path.basename(p))
+                    ids = {x["id"] for x in pr.get("episodes") or []}
+                    mine = [e for e in eps if e["id"] in ids]
+                except Exception:
+                    mine = []
+            for e in mine:
+                if not (e.get("episodeFileId") and os.path.exists(files.get(e["episodeFileId"]) or "")):  # no newer file
+                    gone[e["id"]] = (e, p)
+        if not gone:
+            continue
+        if not os.path.isdir(local(s["path"])):
+            log(f"{media_name()} deleted Series: {s['title']} (noticed on disk, {name})")
+            notify(f"Deleted in {media_name()}", f"Series: {s['title']}", "jellyfin")
+            series_removed(c, key, name, sonarr, s)
+            continue
+        for sn in sorted({e["seasonNumber"] for e, _ in gone.values()}):
+            sel = sorted((e for e, _ in gone.values() if e["seasonNumber"] == sn), key=lambda e: e["episodeNumber"])
+            # a whole season: its files were in a "Season N" folder, and that folder is gone too
+            folders = {os.path.dirname(p) for e, p in gone.values() if e["seasonNumber"] == sn}
+            season_gone = all(re.fullmatch(rf"Season 0*{sn}" + ("|Specials" if sn == 0 else ""), os.path.basename(d), re.I)
+                              and not os.path.isdir(d) for d in folders)
+            what = f"S{sn:02d}" if season_gone else episodes_label(sel)
+            label = f"'{s['title']}' {what}"
+            log(f"{media_name()} deleted {'Season' if season_gone else 'Episode'}: {s['title']} {what} (noticed on disk, {name})")
+            notify(f"Deleted in {media_name()}", f"{s['title']} {what}", "jellyfin")
+            remove_episodes(c, key, name, sonarr, s, sel, label, sn if season_gone else None)
+
+
+def watcher():
+    while True:
+        try:
+            c = cfg()
+            if media_kind(c) == "plex" and not configured(c):
+                watch_pass()
+        except Exception as e:
+            print("library watch:", e, flush=True)
+        time.sleep(60)
 
 
 # ---------- web ----------
@@ -2183,6 +2682,7 @@ def page():
            "%RATIO%": fmt(r["min_ratio"]), "%MODEOPTS%": mode_options(r["mode"]), "%DRYCHK%": "checked" if dry else "",
            "%MODESJSON%": json.dumps(MODES)}
     sub["%VERSION%"] = VERSION
+    sub["%MEDIA%"], sub["%CLIENT%"] = media_name(), client_name()
     sub["%ASSETV%"] = f"{VERSION}.{int(max(os.path.getmtime(os.path.join(STATIC, f)) for f in os.listdir(STATIC)))}"
     out = read_static("index.html")
     for k, v in sub.items():
@@ -2192,7 +2692,7 @@ def page():
 
 
 SETUP_BODY = """%ERR%<p class=small style="text-align:center;margin-bottom:14px">Welcome! Choose a password to protect Shredarr.
-You'll connect Sonarr, Radarr, qBittorrent and Jellyfin next.</p>
+You'll connect Sonarr, Radarr, your torrent client and your media server next.</p>
 <form method=post action=/setup><label>Password<input type=password name=new autocomplete=new-password autofocus required></label>
 <label>Confirm password<input type=password name=confirm autocomplete=new-password required></label><button>Create password</button></form>"""
 
@@ -2299,7 +2799,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self.reply(200, json.dumps(torrents_json()), "application/json")
             except Exception as e:
-                return self.reply(502, f"qBittorrent: {e}")
+                return self.reply(502, f"{client_name()}: {e}")
         if path == "/api/plan":
             h = query.get("hash", [""])[0]
             try:
@@ -2317,7 +2817,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, json.dumps({"items": o["items"], "ts": o["t"]}), "application/json")
         if path == "/api/orphan-plan":
             try:
-                steps, done = orphan_plan(cfg(), query.get("ids", [""])[0].split(","))
+                steps, done, _ = orphan_plan(cfg(), query.get("ids", [""])[0].split(","))
             except Exception as e:
                 return self.reply(502, f"could not build the plan: {e}")
             return self.reply(200, json.dumps({"steps": [d for d, _ in steps], "items": [x[0] for x in done],
@@ -2345,8 +2845,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, json.dumps(con.execute("select ts, msg from log order by id desc limit 500").fetchall()), "application/json")
         if path == "/api/settings":
             g, c = cfg().get("grace", {}), cfg()
-            conns = {svc: {k: ("" if k in SECRET_KEYS else (base_url(svc, v) if k == "url" else v)) for k, v in (c.get(svc) or {}).items()}
-                     | {"has_secret": any((c.get(svc) or {}).get(k) for k in SECRET_KEYS)} for svc in SERVICES}
+            hide = lambda svc, conf: {k: ("" if k in SECRET_KEYS else (base_url(svc, v) if k == "url" else v)) for k, v in (conf or {}).items()} \
+                | {"has_secret": any((conf or {}).get(k) for k in SECRET_KEYS)}
+            conns = {svc: hide(svc, c.get(svc)) for svc in SERVICES}
+            conns["extra_arrs"] = [hide(x["key"], x) for x in c.get("extra_arrs", [])]
+            conns["torrent_client"], conns["media_server"] = client_kind(c), media_kind(c)
             try:
                 ts = torrents() if not configured(c) else []
             except Exception:
@@ -2354,6 +2857,8 @@ class Handler(BaseHTTPRequestHandler):
             host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").split(":")[0]
             guess = f"http://{host or 'shredarr'}:8089"
             try:  # prefer the address Jellyfin's webhook already uses
+                if media_kind(c) != "jellyfin":
+                    raise RuntimeError
                 pl = next(x for x in jellyfin("GET", "/Plugins") if "webhook" in x["Name"].lower())
                 uri = next(o["WebhookUri"] for o in jellyfin("GET", f"/Plugins/{pl['Id']}/Configuration").get("GenericOptions", [])
                            if o.get("WebhookUri", "").endswith("/webhook/jellyfin"))
@@ -2470,8 +2975,27 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, "ok")
         if path == "/api/connections":
             f, c = json.loads(body), cfg()
+            if f.get("torrent_client") in CLIENTS:
+                c["torrent_client"] = f["torrent_client"]
+            if f.get("media_server") in MEDIA_SERVERS:
+                c["media_server"] = f["media_server"]
+            if isinstance(f.get("extra_arrs"), list):
+                old, out, used = {x["key"]: x for x in c.get("extra_arrs", [])}, [], set(ARR_KINDS)
+                for x in f["extra_arrs"]:
+                    kind, url = x.get("kind"), str(x.get("url") or "").strip()
+                    if kind not in ARR_KINDS or not url:
+                        continue
+                    name = str(x.get("name") or "").strip() or f"{SERVICES[kind]} 2"
+                    key = x.get("key") if x.get("key") in old and kind_of(x["key"]) == kind else \
+                        kind + "-" + (re.sub(r"^" + kind + "-?", "", re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")) or "2")
+                    while key in used:
+                        key += "-2"
+                    used.add(key)
+                    out.append({"key": key, "kind": kind, "name": name, "url": api_url(kind, url),
+                                "api_key": str(x.get("api_key") or "").strip() or old.get(key, {}).get("api_key", "")})
+                c["extra_arrs"] = out
             for svc, conf in f.items():
-                if svc not in SERVICES:
+                if svc not in SERVICES or not isinstance(conf, dict):
                     continue
                 old = c.get(svc) or {}
                 new = {k: str(v).strip() for k, v in conf.items() if k in ("url", "api_key", "username", "password")}
@@ -2487,16 +3011,17 @@ class Handler(BaseHTTPRequestHandler):
             save_cfg(c)
             global _qb
             _qb = None
-            _imports["t"] = _titles["t"] = _indexers["t"] = _roots["t"] = _libidx["t"] = 0
+            _imports["t"] = _titles["t"] = _indexers["t"] = _roots["t"] = _libidx["t"] = _orphans["t"] = 0
             log("Connection settings saved")
             threading.Thread(target=check_health, daemon=True).start()
             return self.reply(200, "ok")
         if path == "/api/test-connection":
             f, c = json.loads(body), cfg()
             svc, conf = f.get("service"), dict(f.get("conf") or {})
+            saved = c.get(svc) or next((x for x in c.get("extra_arrs", []) if x.get("key") == svc), {})
             for k in SECRET_KEYS:
-                if not conf.get(k) and (c.get(svc) or {}).get(k):
-                    conf[k] = c[svc][k]
+                if not conf.get(k) and saved.get(k):
+                    conf[k] = saved[k]
             try:
                 return self.reply(200, json.dumps({"ok": True, "msg": test_service(svc, conf)}), "application/json")
             except urllib.error.HTTPError as e:
@@ -2666,6 +3191,7 @@ if __name__ == "__main__":
     threading.Thread(target=sweeper, daemon=True).start()
     threading.Thread(target=summarizer, daemon=True).start()
     threading.Thread(target=monitor, daemon=True).start()
+    threading.Thread(target=watcher, daemon=True).start()
     if not cfg().get("webhook_token"):
         c0 = cfg()
         c0["webhook_token"] = secrets.token_hex(32)

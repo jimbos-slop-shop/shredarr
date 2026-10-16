@@ -1,10 +1,11 @@
 <p align="center"><img src="static/logo.png" width="140" alt="Shredarr logo"></p>
 
 <h1 align="center">Shredarr</h1>
-<p align="center"><b>Delete it in Jellyfin, and it's gone everywhere.</b></p>
+<p align="center"><b>Delete it in Jellyfin or Plex, and it's gone everywhere.</b></p>
 
-When you delete a movie, show, season or episode in **Jellyfin**, Shredarr cleans it up everywhere else:
-**Sonarr / Radarr**, **Seerr** (Jellyseerr/Overseerr) and **qBittorrent**. It keeps the torrent seeding until
+When you delete a movie, show, season or episode in **Jellyfin** or **Plex**, Shredarr cleans it up everywhere
+else: **Sonarr / Radarr** (including extra instances, such as a 4K one), **Seerr** (Jellyseerr/Overseerr) and your
+torrent client (**qBittorrent**, **Transmission** or **Deluge**). It keeps the torrent seeding until
 your seeding rule is met, then removes the torrent and its download, with an **Undo** in the meantime and a
 **Redownload** afterwards.
 
@@ -66,8 +67,11 @@ The screenshots use made-up demo data; see [Try the demo](#try-the-demo).
 
 ## Requirements
 
-- **Jellyfin** with the **Webhook** plugin (Dashboard → Plugins → Catalog → *Webhook*).
-- **Sonarr** and/or **Radarr**, and **qBittorrent**. **Seerr** and **Prowlarr** are optional.
+- A media server: **Jellyfin** with the **Webhook** plugin (Dashboard → Plugins → Catalog → *Webhook*), or **Plex**.
+- **Sonarr** and/or **Radarr**. More instances (say a 4K Radarr) can be added.
+- A torrent client: **qBittorrent**, **Transmission** or **Deluge** (Deluge needs its **Label** plugin turned on
+  for categories).
+- **Seerr** and **Prowlarr** are optional.
 - Shredarr must be able to see your **downloads and library** folders. The simplest setup is the common
   "one `/data` folder" layout (downloads and media on the same disk, imported with hardlinks), mounted into
   Shredarr at the same path your other apps use. If the paths differ, add a **path mapping** in Settings.
@@ -86,35 +90,46 @@ services:
       - TZ=America/Chicago          # your time zone
     volumes:
       - ./shredarr:/config          # settings, history, saved .torrent files and the password hash
-      - /path/to/data:/data         # the same folder Sonarr/Radarr/qBittorrent see as /data
+      - /path/to/data:/data         # the same folder Sonarr/Radarr and the torrent client see as /data
 ```
 
 Then:
 
 1. Open `http://<your-server>:8089` and create a password.
-2. In **Settings → Connections**, enter the address and API key of Sonarr, Radarr, qBittorrent, Jellyfin (and
-   Seerr if you use it). Use **Test** on each one, then **Save connections**.
-3. Under **Jellyfin webhook**, enter the address Jellyfin can reach Shredarr at (for example
-   `http://192.168.1.10:8089`) and click **Set up Jellyfin webhook**.
+2. In **Settings → Connections**, enter the address and API key of Sonarr and Radarr, pick your torrent client and
+   media server and enter theirs (and Seerr's or Prowlarr's if you use them). Use **Test** on each one, then
+   **Save connections**. For a Plex token, open any movie in Plex → ⋯ → *Get Info* → *View XML*; the token is at the
+   end of the address that opens.
+3. **Jellyfin:** under **Jellyfin webhook**, enter the address Jellyfin can reach Shredarr at (for example
+   `http://192.168.1.10:8089`) and click **Set up Jellyfin webhook**. **Plex:** nothing to set up (see below), but
+   turn on *Allow media deletion* in Plex → Settings → Library so you can delete from Plex.
 4. Pick your **default seeding rule** on the dashboard. Leave **Dry run** on until you've seen it do the right
    thing in the Activity tab.
 
 > Shredarr writes into the `/data` mount only to unpack RAR releases for Undo (into a temporary folder next to the
-> download, removed afterwards). Library files and downloads are only deleted through Jellyfin, Sonarr/Radarr and
-> qBittorrent themselves.
+> download, removed afterwards). Library files and downloads are only deleted through your media server,
+> Sonarr/Radarr and the torrent client themselves.
 
 ## How it works
 
-1. **You delete something in Jellyfin.** Jellyfin's Webhook plugin tells Shredarr (Jellyfin batches these, so it
-   can take up to about 90 seconds).
+1. **You delete something in Jellyfin or Plex.** Jellyfin's Webhook plugin tells Shredarr (Jellyfin batches these,
+   so it can take up to about 90 seconds). Plex can't tell other apps about deletes, so with Plex Shredarr watches
+   your library folders: a movie or episode file that disappears and stays gone for a couple of minutes counts as
+   deleted. Renames, upgrades by Sonarr/Radarr and a disk going offline are recognized and ignored.
 2. **Sonarr/Radarr and Seerr are updated right away**, according to *Settings → Cleanup behavior*. Shredarr notes
    which torrents the item came from (from Sonarr/Radarr's download history) and saves a snapshot for Undo.
 3. **The torrent keeps seeding** until none of its files are left in your library, its seeding rule is met and any
-   deletion delay has passed. Then the torrent and its downloaded data are deleted from qBittorrent, and the entry
+   deletion delay has passed. Then the torrent and its downloaded data are deleted from the torrent client, and the entry
    moves to History, ready for Redownload.
 
 A deleted show or season whose folder still exists on disk is treated as Jellyfin tidying up an *empty* show, not
 as a delete, so weekly shows don't disappear from Sonarr when you delete their latest episode.
+
+**More than one Sonarr or Radarr** (for example a separate 4K instance): a delete is only applied to the instances
+whose copy is really gone. Delete the 1080p version and the 4K one stays, and the other way round.
+
+**Transmission and Deluge** can't hand out a torrent's `.torrent` file, so Redownload offers *search again* for
+them (qBittorrent also gets *same release*).
 
 ## Settings at a glance
 

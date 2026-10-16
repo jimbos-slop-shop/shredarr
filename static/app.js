@@ -13,6 +13,7 @@ window.fetch = async (...a) => {
 };
 const $ = (id) => document.getElementById(id);
 const MODES = window.MODES;
+const MEDIA = window.MEDIA || "Jellyfin";
 const ON_SETTINGS = location.pathname === "/settings";
 const rows = new Map();
 const selected = new Set();
@@ -326,7 +327,8 @@ function renderStats() {
   $("dmode").options[0].text = `Default rule (${ruleText(data.default)})`;
   const bad = Object.entries(data.health || {}).filter(([, h]) => !h.ok);
   $("healthbanner").hidden = !bad.length;
-  if (bad.length) setText($("healthtext"), "Can't reach " + bad.map(([k, h]) => `${NAMES[k]} (${h.msg})`).join(", ") + ".");
+  if (bad.length)
+    setText($("healthtext"), "Can't reach " + bad.map(([k, h]) => `${h.name || NAMES[k] || k} (${h.msg})`).join(", ") + ".");
   const left = data.torrents.filter((t) => t.leftover);
   $("leftbanner").hidden = !left.length || $("show").value === "leftover";
   if (left.length)
@@ -347,7 +349,10 @@ const NAMES = {
   radarr: "Radarr",
   seerr: "Seerr",
   qbittorrent: "qBittorrent",
+  transmission: "Transmission",
+  deluge: "Deluge",
   jellyfin: "Jellyfin",
+  plex: "Plex",
   prowlarr: "Prowlarr",
 };
 
@@ -492,7 +497,7 @@ function sentence() {
         : `${ds} <b>or</b> ${rs}, whichever comes first`
       : ds || rs || "<b>straight away</b> (no seeding rule)";
   $("sentence").innerHTML =
-    `After you delete something in Jellyfin, its torrent is removed once it ${ds || rs ? "" : "is deleted "}${cond}.` +
+    `After you delete something in ${MEDIA}, its torrent is removed once it ${ds || rs ? "" : "is deleted "}${cond}.` +
     (f.get("dry_run") ? " <b>Dry run:</b> only logged for now." : "");
 }
 $("rules").addEventListener("input", sentence);
@@ -575,15 +580,17 @@ $("dlg").addEventListener("close", async () => {
 const sysOf = (s) =>
   /Jellyfin/.test(s)
     ? ["jellyfin", "Jellyfin"]
-    : /Sonarr/.test(s)
-      ? ["sonarr", "Sonarr"]
-      : /Radarr/.test(s)
-        ? ["radarr", "Radarr"]
-        : /Seerr/.test(s)
-          ? ["seerr", "Seerr"]
-          : /qBittorrent/.test(s)
-            ? ["qbit", "qBittorrent"]
-            : ["", "Step"];
+    : /Plex/.test(s)
+      ? ["plex", "Plex"]
+      : /Sonarr/.test(s)
+        ? ["sonarr", "Sonarr"]
+        : /Radarr/.test(s)
+          ? ["radarr", "Radarr"]
+          : /Seerr/.test(s)
+            ? ["seerr", "Seerr"]
+            : /qBittorrent|Transmission|Deluge/.test(s)
+              ? ["qbit", s.match(/qBittorrent|Transmission|Deluge/)[0]]
+              : ["", "Step"];
 let deleting = [],
   delKind = "torrents";
 function stepList(steps, notes) {
@@ -594,7 +601,7 @@ function stepList(steps, notes) {
       tag = document.createElement("span"),
       tx = document.createElement("span"),
       keep = (notes || []).includes(s),
-      [c, l] = sysOf(keep ? s.replace(" and Jellyfin", "") : s);
+      [c, l] = sysOf(keep ? s.replace(" and " + MEDIA, "") : s);
     tag.className = "sys " + c;
     tag.textContent = l;
     tx.textContent = s;
@@ -623,7 +630,7 @@ async function askDelete(hashes) {
     }
     const li = document.createElement("li");
     li.className = "m";
-    li.textContent = "Each one is also removed from Jellyfin and Sonarr/Radarr, the same as Delete now on a single torrent.";
+    li.textContent = `Each one is also removed from ${MEDIA} and Sonarr/Radarr, the same as Delete now on a single torrent.`;
     list.append(li);
     $("delgo").disabled = false;
     return $("del").showModal();
@@ -799,7 +806,7 @@ function renderOrphans() {
   $("nrows").replaceChildren(
     ...items.map((x) => {
       const tr = document.createElement("tr"),
-        [cc, ci, cl] = x.app === "radarr" ? ["movie", "film", "Movie"] : ["tv", "tv", "TV"];
+        [cc, ci, cl] = x.kind === "radarr" ? ["movie", "film", "Movie"] : ["tv", "tv", "TV"];
       tr.dataset.id = x.id;
       tr.innerHTML =
         '<td class="n"><input type="checkbox" class="selbox" aria-label="Select"><div class="t"></div><div class="meta"><span class="cat ' +
@@ -812,8 +819,9 @@ function renderOrphans() {
         '<td class="num" data-l="Size"></td><td class="path" data-l="Folder"></td>' +
         `<td class="act"><button class="icon del" title="Delete" aria-label="Delete">${icon("trash")}</button></td>`;
       const td = tr.children;
-      td[0].children[1].textContent = x.title + (x.year && x.app === "radarr" ? ` (${x.year})` : "");
-      td[0].children[2].children[1].textContent = x.app === "sonarr" ? x.what : x.files + " file";
+      td[0].children[1].textContent = x.title + (x.year && x.kind === "radarr" ? ` (${x.year})` : "");
+      td[0].children[2].children[1].textContent =
+        (x.kind === "sonarr" ? x.what : x.files + " file") + (x.app !== x.kind ? " · " + x.instance : "");
       td[0].children[2].children[2].textContent = x.linked ? "also hardlinked elsewhere: deleting may not free space" : "";
       td[1].textContent = size(x.size);
       td[2].textContent = x.path;
@@ -847,7 +855,7 @@ async function askDeleteOrphans(ids) {
   $("del").querySelector("h3").textContent = "Delete media with no torrent?";
   $("delname").textContent =
     picked.length === 1
-      ? picked[0].title + (picked[0].app === "sonarr" ? " " + picked[0].what : "")
+      ? picked[0].title + (picked[0].kind === "sonarr" ? " " + picked[0].what : "")
       : `${picked.length} items · ${size(picked.reduce((a, x) => a + x.size, 0))}`;
   $("delnote").textContent = "The files are deleted from disk. This can't be undone, but History can redownload it.";
   list.innerHTML = '<li class="m">Working out what will be removed…</li>';
@@ -878,7 +886,7 @@ function lineClass(m) {
 function evIcon(head, cls) {
   if (cls === "bad") return "alert";
   if (cls === "dry") return "clock";
-  if (/^(Jellyfin deleted|Delete now)/.test(head)) return "trash";
+  if (/^(Jellyfin deleted|Plex deleted|Delete now)/.test(head)) return "trash";
   if (/^deleted torrent|^Low disk/.test(head)) return "check";
   if (/started/.test(head)) return "power";
   if (/rule/i.test(head)) return "sliders";
@@ -1087,25 +1095,96 @@ function polText(p) {
   return p.min_length <= 1 && !p.upper && !p.digit && !p.symbol ? "No requirements." : "Needs " + parts.join(", ") + ".";
 }
 
-function renderConnections() {
-  for (const box of document.querySelectorAll(".conn")) {
-    const svc = box.dataset.svc,
-      conf = settings.connections[svc] || {},
-      h = settings.health[svc];
-    for (const el of box.querySelectorAll("input")) {
-      const key = el.name.split(".")[1];
-      el.value = conf[key] || "";
-      if (el.type === "password") el.placeholder = conf.has_secret ? "saved, leave blank to keep" : "";
-    }
-    const dot = box.querySelector(".dot"),
-      st = box.querySelector(".cstate");
-    dot.className = "dot " + (!conf.url ? "" : h ? (h.ok ? "ok" : "bad") : "");
-    st.textContent = !conf.url ? (svc === "seerr" || svc === "prowlarr" ? "" : "not set up") : h ? h.msg : "checking…";
-    st.className = "cstate" + (h && !h.ok ? " badc" : "");
+const CLIENT_INFO = {
+  qbittorrent: { url: "http://qbittorrent:8080", help: "", user: true },
+  transmission: {
+    url: "http://transmission:9091",
+    help: "Leave the username and password blank if Transmission doesn't ask for them.",
+    user: true,
+  },
+  deluge: { url: "http://deluge:8112", help: "The Deluge web UI. Turn on its Label plugin so categories work.", user: false },
+};
+const MEDIA_INFO = {
+  jellyfin: { url: "http://jellyfin:8096", key: "API key", help: "Jellyfin → Dashboard → API Keys" },
+  plex: {
+    url: "http://plex:32400",
+    key: "Token",
+    help: "Your X-Plex-Token. In Plex, open any movie → ⋯ → Get Info → View XML; the token is at the end of the address that opens.",
+  },
+};
+// which app a connection box is about: its select (torrent client / media server), its instance key, or its service name
+function boxService(box) {
+  const sel = box.querySelector("select");
+  if (sel) return sel.value;
+  if (box.dataset.kind) return box.dataset.svc || box.dataset.kind + "-new";
+  return box.dataset.svc;
+}
+function showConn(box, conf) {
+  const svc = boxService(box),
+    h = settings.health[svc],
+    optional = ["seerr", "prowlarr"].includes(svc);
+  conf = conf || settings.connections[svc] || {};
+  for (const el of box.querySelectorAll("input")) {
+    const key = el.name.split(".")[1];
+    el.value = conf[key] || "";
+    if (el.type === "password") el.placeholder = conf.has_secret ? "saved, leave blank to keep" : "";
   }
+  const dot = box.querySelector(".dot"),
+    st = box.querySelector(".cstate");
+  dot.className = "dot " + (!conf.url ? "" : h ? (h.ok ? "ok" : "bad") : "");
+  st.textContent = !conf.url ? (optional || box.dataset.kind ? "" : "not set up") : h ? h.msg : "checking…";
+  st.className = "cstate" + (h && !h.ok ? " badc" : "");
+}
+function kindHelp() {
+  const ci = CLIENT_INFO[$("f-client").value],
+    mi = MEDIA_INFO[$("f-media").value],
+    plex = $("f-media").value === "plex";
+  document.querySelector('input[name="client.url"]').placeholder = ci.url;
+  $("client-help").textContent = ci.help;
+  $("client-user").hidden = !ci.user;
+  document.querySelector('input[name="media.url"]').placeholder = mi.url;
+  $("media-key-label").textContent = mi.key;
+  $("media-help").textContent = mi.help;
+  $("jfhook").hidden = plex;
+  $("plexnote").hidden = !plex;
+}
+function extraBox(x) {
+  const div = document.createElement("div");
+  div.className = "conn extra";
+  div.dataset.kind = x.kind;
+  if (x.key) div.dataset.svc = x.key;
+  const port = x.kind === "radarr" ? 7878 : 8989;
+  div.innerHTML =
+    '<div class="conn-h"><i class="dot"></i><b></b><small class="cstate"></small></div>' +
+    `<div class="field"><label>Name</label><div><input name="x.name" autocomplete="off" placeholder="e.g. ${NAMES[x.kind]} 4K"></div></div>` +
+    `<div class="field"><label>URL</label><div><input name="x.url" autocomplete="off" placeholder="http://${x.kind}4k:${port}"></div></div>` +
+    '<div class="field"><label>API key</label><div><input name="x.api_key" type="password" autocomplete="off"></div></div>' +
+    `<div class="btnrow"><button type="button" class="ctest">Test</button><button type="button" class="xdel">${icon("x")}Remove</button></div>`;
+  div.querySelector("b").textContent = x.name || `New ${NAMES[x.kind]} instance`;
+  showConn(div, x);
+  div.querySelector(".ctest").onclick = () => testConn(div);
+  div.querySelector(".xdel").onclick = () => {
+    div.remove();
+    toast("Removed. Save connections to apply.");
+  };
+  return div;
+}
+function renderConnections() {
+  $("f-client").value = settings.connections.torrent_client;
+  $("f-media").value = settings.connections.media_server;
+  for (const box of document.querySelectorAll("#cform .conn:not(.extra)")) showConn(box);
+  $("extras").replaceChildren(...settings.connections.extra_arrs.map(extraBox));
+  kindHelp();
   $("connbox").classList.toggle("needs", settings.missing.length > 0);
   if (!$("f-wu").value) $("f-wu").value = settings.webhook_url_guess;
 }
+for (const sel of [$("f-client"), $("f-media")])
+  sel.onchange = () => {
+    showConn(sel.closest(".conn"));
+    kindHelp();
+  };
+$("add-sonarr").onclick = () => $("extras").append(extraBox({ kind: "sonarr" }));
+$("add-radarr").onclick = () => $("extras").append(extraBox({ kind: "radarr" }));
 
 const RULE_TYPES = { category: "Category", title: "Show or movie", tracker: "Tracker" };
 function ruleRow(r = { type: "category", match: "", mode: "either", min_seed_days: null, min_ratio: null }) {
@@ -1145,7 +1224,7 @@ function ruleRow(r = { type: "category", match: "", mode: "either", min_seed_day
 function mapRow(m = { remote: "", local: "" }) {
   const div = document.createElement("div");
   div.className = "mrow";
-  div.innerHTML = `<input class="mr" placeholder="Path qBittorrent/Sonarr/Radarr use, e.g. /downloads/" aria-label="Their path"><span>→</span><input class="ml" placeholder="Same folder in Shredarr, e.g. /data/downloads/" aria-label="Shredarr path"><button type="button" class="icon" title="Remove" aria-label="Remove">${icon("x")}</button>`;
+  div.innerHTML = `<input class="mr" placeholder="Path the torrent client/Sonarr/Radarr use, e.g. /downloads/" aria-label="Their path"><span>→</span><input class="ml" placeholder="Same folder in Shredarr, e.g. /data/downloads/" aria-label="Shredarr path"><button type="button" class="icon" title="Remove" aria-label="Remove">${icon("x")}</button>`;
   div.querySelector(".mr").value = m.remote;
   div.querySelector(".ml").value = m.local;
   div.querySelector("button").onclick = () => div.remove();
@@ -1196,39 +1275,47 @@ async function loadSettings() {
   }
 }
 
-function connValues(svc) {
+function connValues(box) {
   const conf = {};
-  for (const el of document.querySelectorAll(`.conn[data-svc="${svc}"] input`)) conf[el.name.split(".")[1]] = el.value.trim();
+  for (const el of box.querySelectorAll("input")) conf[el.name.split(".")[1]] = el.value.trim();
   return conf;
 }
-for (const b of document.querySelectorAll(".ctest"))
-  b.onclick = async () => {
-    const box = b.closest(".conn"),
-      svc = box.dataset.svc,
-      st = box.querySelector(".cstate"),
-      dot = box.querySelector(".dot");
-    b.disabled = true;
-    st.textContent = "testing…";
-    try {
-      const r = JSON.parse(await postJSON("/api/test-connection", { service: svc, conf: connValues(svc) }));
-      dot.className = "dot " + (r.ok ? "ok" : "bad");
-      st.textContent = r.msg;
-      st.className = "cstate" + (r.ok ? "" : " badc");
-      toast(r.ok ? `${NAMES[svc]} works: ${r.msg}` : `${NAMES[svc]}: ${r.msg}`, !r.ok);
-    } catch (e) {
-      toast(e.message, true);
-    } finally {
-      b.disabled = false;
-    }
-  };
+async function testConn(box) {
+  const b = box.querySelector(".ctest"),
+    svc = boxService(box),
+    name = box.dataset.kind ? box.querySelector("b").textContent : NAMES[svc],
+    st = box.querySelector(".cstate"),
+    dot = box.querySelector(".dot");
+  b.disabled = true;
+  st.textContent = "testing…";
+  try {
+    const r = JSON.parse(await postJSON("/api/test-connection", { service: svc, conf: connValues(box) }));
+    dot.className = "dot " + (r.ok ? "ok" : "bad");
+    st.textContent = r.msg;
+    st.className = "cstate" + (r.ok ? "" : " badc");
+    toast(r.ok ? `${name} works: ${r.msg}` : `${name}: ${r.msg}`, !r.ok);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    b.disabled = false;
+  }
+}
+for (const box of document.querySelectorAll("#cform .conn")) box.querySelector(".ctest").onclick = () => testConn(box);
 $("cform").onsubmit = async (e) => {
   e.preventDefault();
-  const all = {};
-  for (const svc of Object.keys(NAMES)) all[svc] = connValues(svc);
+  const all = { torrent_client: $("f-client").value, media_server: $("f-media").value };
+  for (const box of document.querySelectorAll("#cform .conn:not(.extra)")) all[boxService(box)] = connValues(box);
+  all.extra_arrs = [...document.querySelectorAll("#extras .conn")].map((b) => ({
+    key: b.dataset.svc || "",
+    kind: b.dataset.kind,
+    ...connValues(b),
+  }));
+  const switched =
+    all.torrent_client !== settings.connections.torrent_client || all.media_server !== settings.connections.media_server;
   try {
     await postJSON("/api/connections", all);
     toast("Connections saved. Checking them now…");
-    setTimeout(loadSettings, 2500);
+    setTimeout(() => (switched ? location.reload() : loadSettings()), 2500);
   } catch (err) {
     toast(err.message, true);
   }
@@ -1340,7 +1427,7 @@ function gHelp() {
   const f = formObj($("gform")),
     v = +f.value || 0;
   $("g-help").textContent = v
-    ? `Torrents wait at least ${v} ${v === 1 ? f.unit.slice(0, -1) : f.unit} after you delete in Jellyfin. Sonarr/Radarr cleanup still happens right away; Undo reverses it.`
+    ? `Torrents wait at least ${v} ${v === 1 ? f.unit.slice(0, -1) : f.unit} after you delete in ${MEDIA}. Sonarr/Radarr cleanup still happens right away; Undo reverses it.`
     : "0 means no delay: the torrent is removed as soon as its seeding rule is met.";
 }
 $("gform").oninput = gHelp;
