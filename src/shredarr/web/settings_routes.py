@@ -10,6 +10,7 @@ from ..clients.base import ServiceHTTPError
 from ..config import SECRET_KEYS
 from ..services.connections import describe_service
 from ..services.settings_editor import Invalid
+from ..text import plural
 from .deps import Core, JsonBody
 from .responses import as_json, text
 
@@ -122,6 +123,21 @@ def save_grace(core: Core, body: JsonBody) -> Response:
 def save_restore(core: Core, body: JsonBody) -> Response:
     core.editor.restore(bool(body.get("enabled")))
     return text("ok")
+
+
+@router.post("/api/torrent-retention")
+def save_torrent_retention(core: Core, body: JsonBody) -> Response:
+    try:
+        core.editor.torrent_retention(body)
+    except Invalid as e:
+        return text(str(e), 400)
+    core.saved.prune()  # a shorter time applies right away
+    return text("ok")
+
+
+@router.post("/api/saved-torrents/delete")
+def delete_saved_torrents(core: Core) -> Response:
+    return text(f"Deleted {plural(core.saved.delete_all(), 'saved .torrent file')}")
 
 
 @router.post("/api/restore-check")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
 
 from ..clients.base import ServiceError
@@ -16,6 +15,7 @@ from .connections import Connections
 from .health import Health, Updates
 from .library import Library
 from .rules import evaluate, met_parts
+from .saved_torrents import SavedTorrents
 from .trackers import Trackers, tracker_host
 from .webhook_setup import WebhookSetup
 
@@ -44,7 +44,7 @@ class Dashboard:
         webhook: WebhookSetup,
         version: str,
         repo: str,
-        torrent_dir: str,
+        saved: SavedTorrents,
     ) -> None:
         self.config = config
         self.connections = connections
@@ -59,7 +59,7 @@ class Dashboard:
         self.webhook = webhook
         self.version = version
         self.repo = repo
-        self.torrent_dir = torrent_dir
+        self.saved = saved
 
     def torrents(self) -> JSON:
         c = self.config.load()
@@ -153,8 +153,7 @@ class Dashboard:
                     "redownloaded": r.redownloaded,
                     "redownload_how": r.redownload_how,
                     "cross_seed_of": (r.restore or {}).get("cross_seed_of"),
-                    "saved_torrent": bool(r.hash)
-                    and os.path.isfile(os.path.join(self.torrent_dir, (r.hash or "") + ".torrent")),
+                    "saved_torrent": self.saved.has(r.hash),
                 }
             )
         return out
@@ -197,6 +196,8 @@ class Dashboard:
             "notify": c.notify,
             "policy": c.password_policy,
             "restore": {"enabled": c.restore_enabled},
+            "torrent_retention": c.torrent_retention,
+            "saved_torrents": self.saved.summary(),
             "grace": {"value": g.get("value") or 0, "unit": g.get("unit") or "hours"},
             "unar": bool(shutil.which("unar")),
         }

@@ -28,6 +28,7 @@ from .services.queue import CleanupQueue
 from .services.redownload import Redownloader
 from .services.removal import MediaRemoval
 from .services.restore import Restorer, Undo
+from .services.saved_torrents import SavedTorrents
 from .services.settings_editor import SettingsEditor
 from .services.trackers import Trackers
 from .services.watcher import LibraryWatcher
@@ -38,7 +39,7 @@ from .text import human, plural
 log = logging.getLogger(__name__)
 
 HEALTH_EVERY = 300  # seconds
-UPDATE_EVERY = 144  # health checks (12 hours)
+UPDATE_EVERY = 144  # health checks (12 hours) between update checks and removing old saved .torrent files
 SUMMARY_CHECK_EVERY = 30  # seconds
 
 
@@ -66,6 +67,7 @@ class Shredarr:
         self.library = Library(self.connections)
         self.trackers = Trackers(self.connections)
         self.suppressions = Suppressions()
+        self.saved = SavedTorrents(settings.torrent_dir, self.config, self.activity)
         self.queue = CleanupQueue(self.pending, self.library, self.activity)
         self.deletes = MediaDeletes(
             self.config, self.connections, self.queue, self.activity, self.notifier, self.suppressions
@@ -81,7 +83,7 @@ class Shredarr:
             self.redownloads,
             self.activity,
             self.notifier,
-            settings.torrent_dir,
+            self.saved,
         )
         self.removal = MediaRemoval(self.connections, self.suppressions)
         self.delete_now = DeleteNow(
@@ -119,7 +121,7 @@ class Shredarr:
             self.redownloads,
             self.activity,
             self.notifier,
-            settings.torrent_dir,
+            self.saved,
         )
         self.cleaner.after_sweep.append(self.redownloader.check)
         self.auth = Auth(self.config, self.sessions, settings.reset_file, self.activity, self.notifier)
@@ -140,7 +142,7 @@ class Shredarr:
             self.webhook,
             self.version,
             settings.repo,
-            settings.torrent_dir,
+            self.saved,
         )
         self.editor = SettingsEditor(self.config, self.overrides, self.activity, lambda: spawn(self.cleaner.safe_sweep))
         self.events: queue.Queue[JSON] = queue.Queue()
@@ -222,6 +224,7 @@ class Shredarr:
                 self.health.check()
                 if n % UPDATE_EVERY == 0:
                     self.updates.check()
+                    self.saved.prune()
             except Exception:
                 log.exception("health check")
             n += 1

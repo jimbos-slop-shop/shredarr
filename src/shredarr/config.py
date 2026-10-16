@@ -67,6 +67,8 @@ NOTIFY_DEFAULTS: JSON = {
     "summary_time": "09:00",
 }
 DEFAULT_RULE: JSON = {"mode": "either", "min_seed_days": 14, "min_ratio": 2}
+RETENTION_UNITS = {"days": 86400, "months": 30 * 86400, "years": 365 * 86400, "forever": None}
+RETENTION_DEFAULT: JSON = {"value": 1, "unit": "years"}
 
 
 class Rule(TypedDict, total=False):
@@ -215,6 +217,19 @@ class Config:
         """Undo of RAR releases: unpack the torrent's archives with the bundled unar. On unless switched off."""
         r = self.raw.get("restore", {})
         return bool(r.get("enabled", r.get("method") != "off"))
+
+    @property
+    def torrent_retention(self) -> JSON:
+        """How long saved .torrent files are kept, e.g. {"value": 1, "unit": "years"} (or days, months, forever)."""
+        r = {**RETENTION_DEFAULT, **self.raw.get("torrent_retention", {})}
+        return r if r["unit"] in RETENTION_UNITS else dict(RETENTION_DEFAULT)
+
+    @property
+    def torrent_retention_seconds(self) -> float | None:
+        """None: kept forever."""
+        r = self.torrent_retention
+        unit = RETENTION_UNITS[r["unit"]]
+        return None if unit is None else float(r["value"]) * unit
 
     @property
     def check_interval(self) -> float:

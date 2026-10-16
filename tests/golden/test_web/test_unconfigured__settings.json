@@ -89,6 +89,14 @@
     "enabled": true
   },
   "rule_list": [],
+  "saved_torrents": {
+    "bytes": 0,
+    "count": 0
+  },
+  "torrent_retention": {
+    "unit": "years",
+    "value": 1
+  },
   "unar": false,
   "update_check": true,
   "version": "<VERSION>",

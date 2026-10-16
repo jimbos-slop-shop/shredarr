@@ -20,6 +20,7 @@ from .connections import Connections
 from .library import Library
 from .notifications import Notifier
 from .rules import evaluate, rule_for
+from .saved_torrents import SavedTorrents
 from .snapshots import movie_settings, season_monitoring, series_settings
 from .trackers import Trackers, tracker_host
 
@@ -60,7 +61,7 @@ class Cleaner:
         redownloads: RedownloadsRepo,
         activity: Activity,
         notifier: Notifier,
-        torrent_dir: str,
+        saved: SavedTorrents,
     ) -> None:
         self.config = config
         self.connections = connections
@@ -72,7 +73,7 @@ class Cleaner:
         self.redownloads = redownloads
         self.activity = activity
         self.notifier = notifier
-        self.torrent_dir = torrent_dir
+        self.saved = saved
         self.after_sweep: list[Callable[[], None]] = []  # e.g. checking on redownloads
         self._lock = threading.Lock()
 
@@ -326,9 +327,7 @@ class Cleaner:
         try:
             data = self.connections.torrents.export(h)
             if data:
-                os.makedirs(self.torrent_dir, exist_ok=True)
-                with open(os.path.join(self.torrent_dir, h + ".torrent"), "wb") as f:
-                    f.write(data)
+                self.saved.save(h, data)
         except Exception as e:  # best effort, as above
             log.warning("torrent export: %s", e)
         return out

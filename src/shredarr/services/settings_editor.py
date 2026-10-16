@@ -15,6 +15,7 @@ from ..config import (
     MODES,
     NOTIFY_DEFAULTS,
     OPTIONAL,
+    RETENTION_UNITS,
     SECRET_KEYS,
     SERVICES,
     ConfigStore,
@@ -25,6 +26,7 @@ from ..config import (
 from ..repositories import OverridesRepo
 from ..text import plural, rule_text
 from .activity import Activity
+from .saved_torrents import retention_text
 
 
 class Invalid(ValueError):
@@ -145,6 +147,24 @@ class SettingsEditor:
         ]
         self.config.update(lambda raw: raw.update(path_maps=out))
         self.activity.info(f"Path mappings saved: {len(out)}")
+
+    def torrent_retention(self, f: JSON) -> JSON:
+        """How long saved .torrent files are kept. Returns the saved setting."""
+        unit = f.get("unit")
+        if unit not in RETENTION_UNITS:
+            raise Invalid("Choose days, months, years or forever.")
+        try:
+            value = float(f.get("value") or 0) if unit != "forever" else 1.0
+        except ValueError as e:
+            raise Invalid("How long to keep them should be a number.") from e
+        if value <= 0:
+            raise Invalid("Keep them for more than 0, or choose forever.")
+        keep = {"value": value, "unit": unit}
+        self.config.update(lambda raw: raw.update(torrent_retention=keep))
+        self.activity.info(
+            f"Saved .torrent files are kept {'forever' if unit == 'forever' else 'for ' + retention_text(value, unit)}"
+        )
+        return keep
 
     def restore(self, enabled: bool) -> None:
         self.config.update(lambda raw: raw.update(restore={"enabled": enabled}))
