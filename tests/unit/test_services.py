@@ -19,6 +19,7 @@ from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreach
 from shredarr.config import NOTIFY_DEFAULTS
 from shredarr.db import MIGRATIONS
 from shredarr.services import notifications
+from shredarr.services.cleanup import SweepContext
 from shredarr.services.connections import TorrentService
 from shredarr.services.health import Updates
 from shredarr.services.settings_editor import SettingsEditor
@@ -240,3 +241,25 @@ def test_sign_in_limit_address() -> None:
     assert ip("8.8.8.8", "10.9.9.9") == "8.8.8.8"  # straight from the internet: the header is ignored
     assert ip("172.18.0.2", "198.51.100.7") == "198.51.100.7"  # a proxy in the Docker network
     assert ip("127.0.0.1", "1.1.1.1, 198.51.100.7") == "198.51.100.7"  # the first entry is whatever the client sent
+
+
+def test_low_space_waits_when_sonarr_radarr_cant_be_asked(
+    core: Shredarr, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without Sonarr/Radarr there's no telling whether a title rule protects a torrent: it isn't deleted early, and
+    the sweep carries on."""
+    core.db.migrate()
+    core.config.save({"low_space": {"enabled": True, "min_free_gb": 10**9}})
+    h = "a" * 40
+    core.pending.add(h, "Spring", "leftover")
+    t: Any = {"hash": h, "name": "Spring", "save_path": str(tmp_path), "content_path": str(tmp_path), "progress": 1}
+
+    def down(*a: Any) -> None:
+        raise ServiceUnreachable("Sonarr is down")
+
+    monkeypatch.setattr(core.library, "in_library", lambda t: 0)
+    monkeypatch.setattr(core.library, "title_of", down)
+    deleted: list[Any] = []
+    monkeypatch.setattr(core.cleaner, "cleanup", lambda *a, **k: deleted.append(a))
+    core.cleaner.low_space_pass(core.config.load(), SweepContext({h: t}, {}), {})
+    assert not deleted
