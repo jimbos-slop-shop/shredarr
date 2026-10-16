@@ -52,8 +52,15 @@ class JsonApi:
         self.base_url = base_url.rstrip("/")
         self._http = httpx.Client(headers=headers or {}, timeout=timeout)
 
-    def request(self, method: str, path: str, *, params: dict[str, Any] | None = None, json: Any = None,
-                headers: dict[str, str] | None = None) -> Any:
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
         try:
             r = self._http.request(method, self.base_url + path, params=params, json=json, headers=headers)
         except httpx.HTTPError as e:

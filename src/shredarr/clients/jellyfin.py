@@ -28,8 +28,13 @@ class JellyfinClient(JsonApi):
 
     def media_items(self) -> list[JSON]:
         """Every movie, episode and video, with its file path."""
-        return self.items(recursive="true", fields="Path", includeItemTypes="Movie,Episode,Video", enableImages="false",
-                          enableUserData="false")
+        return self.items(
+            recursive="true",
+            fields="Path",
+            includeItemTypes="Movie,Episode,Video",
+            enableImages="false",
+            enableUserData="false",
+        )
 
     def provider_ids(self, item_id: str) -> dict[str, str]:
         """tvdb/tmdb/imdb ids of an item (lower-case keys), or {} if Jellyfin doesn't know it."""

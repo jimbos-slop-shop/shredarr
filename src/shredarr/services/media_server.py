@@ -20,7 +20,7 @@ def map_onto(p: str, location: str) -> str | None:
     folder's name: the media server may mount the library at another path."""
     name = "/" + os.path.basename(location.rstrip("/")) + "/"
     i = p.find(name)
-    return location.rstrip("/") + p[i + len(name) - 1:] if i >= 0 else None
+    return location.rstrip("/") + p[i + len(name) - 1 :] if i >= 0 else None
 
 
 class MediaServer(Protocol):
@@ -62,7 +62,10 @@ class Jellyfin:
             for loc in locations:
                 jp = map_onto(p, loc)
                 if jp:
-                    updates += [{"Path": os.path.dirname(jp), "UpdateType": "Created"}, {"Path": jp, "UpdateType": "Created"}]
+                    updates += [
+                        {"Path": os.path.dirname(jp), "UpdateType": "Created"},
+                        {"Path": jp, "UpdateType": "Created"},
+                    ]
                     break
         if updates:
             try:

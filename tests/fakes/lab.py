@@ -118,8 +118,18 @@ class Lab:
         self.seerr = FakeSeerr()
         self.ntfy = FakeNtfy()
         self.extra_arrs: list[tuple[str, FakeRadarr | FakeSonarr]] = []
-        self.fakes = [self.sonarr, self.radarr, self.prowlarr, self.qbittorrent, self.transmission, self.deluge,
-                      self.jellyfin, self.plex, self.seerr, self.ntfy]
+        self.fakes = [
+            self.sonarr,
+            self.radarr,
+            self.prowlarr,
+            self.qbittorrent,
+            self.transmission,
+            self.deluge,
+            self.jellyfin,
+            self.plex,
+            self.seerr,
+            self.ntfy,
+        ]
         for f in self.fakes:
             f.start()
 
@@ -138,17 +148,17 @@ class Lab:
     # ------------------------------------------------------------------ paths as the apps see them
     def app(self, p: str) -> str:
         if self.app_prefix and p.startswith(self.app_prefix[0]):
-            return self.app_prefix[1] + p[len(self.app_prefix[0]):]
+            return self.app_prefix[1] + p[len(self.app_prefix[0]) :]
         return p
 
     def local(self, p: str) -> str:
         if self.app_prefix and p.startswith(self.app_prefix[1]):
-            return self.app_prefix[0] + p[len(self.app_prefix[1]):]
+            return self.app_prefix[0] + p[len(self.app_prefix[1]) :]
         return p
 
     def local_from_jellyfin(self, p: str) -> str:
         pre = self.jellyfin.prefix
-        return pre[0] + p[len(pre[1]):] if pre and p.startswith(pre[1]) else p
+        return pre[0] + p[len(pre[1]) :] if pre and p.startswith(pre[1]) else p
 
     def mount_apps_at(self, app_root: str) -> None:
         """Make every app report paths under app_root instead of the lab's data folder (needs a path mapping)."""
@@ -156,18 +166,31 @@ class Lab:
         self.sonarr.root_folder, self.radarr.root_folder = self.app(self.tv), self.app(self.movies)
 
     # ------------------------------------------------------------------ config for Shredarr
-    def config(self, *, client: str = "qbittorrent", media: str = "jellyfin", seerr: bool = True, prowlarr: bool = False,
-               notify: bool = True, **extra: Any) -> dict[str, Any]:
+    def config(
+        self,
+        *,
+        client: str = "qbittorrent",
+        media: str = "jellyfin",
+        seerr: bool = True,
+        prowlarr: bool = False,
+        notify: bool = True,
+        **extra: Any,
+    ) -> dict[str, Any]:
         c: dict[str, Any] = {
             "sonarr": {"url": self.sonarr.url + "/api/v3", "api_key": self.sonarr.api_key},
             "radarr": {"url": self.radarr.url + "/api/v3", "api_key": self.radarr.api_key},
-            "torrent_client": client, "media_server": media,
+            "torrent_client": client,
+            "media_server": media,
             "rules": {"mode": "either", "min_seed_days": 14, "min_ratio": 2},
-            "update_check": False, "webhook_token": "lab-webhook-token",
+            "update_check": False,
+            "webhook_token": "lab-webhook-token",
         }
         if client == "qbittorrent":
-            c["qbittorrent"] = {"url": self.qbittorrent.url, "username": self.qbittorrent.username,
-                                "password": self.qbittorrent.password}
+            c["qbittorrent"] = {
+                "url": self.qbittorrent.url,
+                "username": self.qbittorrent.username,
+                "password": self.qbittorrent.password,
+            }
         elif client == "transmission":
             c["transmission"] = {"url": self.transmission.url, "username": "", "password": ""}
         else:
@@ -183,8 +206,16 @@ class Lab:
         if notify:
             c["notify"] = {"ntfy_server": self.ntfy.url, "ntfy_topic": "shredarr", "on_jellyfin": True}
         if self.extra_arrs:
-            c["extra_arrs"] = [{"key": key, "kind": fake.app.lower(), "name": f"{fake.app} 4K", "url": fake.url + "/api/v3",
-                                "api_key": fake.api_key} for key, fake in self.extra_arrs]
+            c["extra_arrs"] = [
+                {
+                    "key": key,
+                    "kind": fake.app.lower(),
+                    "name": f"{fake.app} 4K",
+                    "url": fake.url + "/api/v3",
+                    "api_key": fake.api_key,
+                }
+                for key, fake in self.extra_arrs
+            ]
         if self.app_prefix:
             c["path_maps"] = [{"remote": self.app_prefix[1] + "/", "local": self.app_prefix[0] + "/"}]
         c.update(extra)
@@ -200,13 +231,35 @@ class Lab:
         return fake  # type: ignore[return-value]
 
     # ------------------------------------------------------------------ torrents
-    def add_torrent(self, name: str, disk_path: str, *, category: str, tracker: str = TRACKER, ratio: float = 0.0,
-                    seeding_days: float = 0.0, progress: float = 1.0, upspeed: int = 0, key: str | None = None) -> Torrent:
+    def add_torrent(
+        self,
+        name: str,
+        disk_path: str,
+        *,
+        category: str,
+        tracker: str = TRACKER,
+        ratio: float = 0.0,
+        seeding_days: float = 0.0,
+        progress: float = 1.0,
+        upspeed: int = 0,
+        key: str | None = None,
+    ) -> Torrent:
         h = hashlib.sha1(f"{key or name}|{tracker}".encode()).hexdigest()
         save = os.path.dirname(disk_path)
-        t = Torrent(hash=h, name=name, save_path=self.app(save), content_path=self.app(disk_path), disk_path=disk_path,
-                    category=category, tracker=tracker, added_on=int(time.time() - seeding_days * DAY - 3600),
-                    ratio=ratio, seeding_time=int(seeding_days * DAY), progress=progress, upspeed=upspeed)
+        t = Torrent(
+            hash=h,
+            name=name,
+            save_path=self.app(save),
+            content_path=self.app(disk_path),
+            disk_path=disk_path,
+            category=category,
+            tracker=tracker,
+            added_on=int(time.time() - seeding_days * DAY - 3600),
+            ratio=ratio,
+            seeding_time=int(seeding_days * DAY),
+            progress=progress,
+            upspeed=upspeed,
+        )
         self.torrents[h] = t
         return t
 
@@ -214,7 +267,11 @@ class Lab:
         t = self.torrents.pop(h, None)
         if not t:
             return
-        files = [t.disk_path] if os.path.isfile(t.disk_path) else [os.path.join(d, f) for d, _, fs in os.walk(t.disk_path) for f in fs]
+        files = (
+            [t.disk_path]
+            if os.path.isfile(t.disk_path)
+            else [os.path.join(d, f) for d, _, fs in os.walk(t.disk_path) for f in fs]
+        )
         self.gone[h] = {"torrent": t, "files": {p: os.path.getsize(p) for p in files if os.path.exists(p)}}
         if with_data:
             remove_data(t)
@@ -237,9 +294,23 @@ class Lab:
         return t
 
     # ------------------------------------------------------------------ movies
-    def add_movie(self, title: str, year: int, *, release: str | None = None, category: str = "radarr", ratio: float = 0.0,
-                  seeding_days: float = 0.0, tracker: str = TRACKER, indexer: str = "ExampleTracker", rar: bool = False,
-                  radarr: FakeRadarr | None = None, seerr: bool = True, size: int = 3000, torrent: bool = True) -> MovieRef:
+    def add_movie(
+        self,
+        title: str,
+        year: int,
+        *,
+        release: str | None = None,
+        category: str = "radarr",
+        ratio: float = 0.0,
+        seeding_days: float = 0.0,
+        tracker: str = TRACKER,
+        indexer: str = "ExampleTracker",
+        rar: bool = False,
+        radarr: FakeRadarr | None = None,
+        seerr: bool = True,
+        size: int = 3000,
+        torrent: bool = True,
+    ) -> MovieRef:
         radarr = radarr or self.radarr
         tmdb, imdb = stable_int("movie:" + title), f"tt{stable_int('imdb:' + title, 7)}"
         self.movie_catalog[tmdb] = {"title": title, "year": year, "imdb": imdb}
@@ -260,11 +331,18 @@ class Lab:
                 write(os.path.join(dl, release + ".nfo"), 10)
                 os.makedirs(folder, exist_ok=True)
                 os.link(src, lib)
-            t = self.add_torrent(release, dl, category=category, tracker=tracker, ratio=ratio, seeding_days=seeding_days)
+            t = self.add_torrent(
+                release, dl, category=category, tracker=tracker, ratio=ratio, seeding_days=seeding_days
+            )
             self.releases[t.hash] = {"kind": "movie", "tmdb": tmdb, "name": release}
             radarr.add_history("grabbed", t.hash, release, {"indexer": f"{indexer} (Prowlarr)"}, movieId=m["id"])
-            radarr.add_history("downloadFolderImported", t.hash, release,
-                               {"importedPath": self.app(lib), "droppedPath": self.app(src)}, movieId=m["id"])
+            radarr.add_history(
+                "downloadFolderImported",
+                t.hash,
+                release,
+                {"importedPath": self.app(lib), "droppedPath": self.app(src)},
+                movieId=m["id"],
+            )
         else:
             write(lib, size)
         radarr.set_movie_file(m, lib)
@@ -278,14 +356,42 @@ class Lab:
         return next((m for m in self.movie_refs.values() if m.folder == folder), None)
 
     # ------------------------------------------------------------------ shows
-    def add_series(self, title: str, *, year: int = 2020, seasons: dict[int, int] | None = None, flat: bool = False,
-                   unaired: tuple[tuple[int, int], ...] = (), seerr: bool = True) -> SeriesRef:
-        tvdb, tmdb, imdb = stable_int("tvdb:" + title), stable_int("tmdb:" + title), f"tt{stable_int('imdb:' + title, 7)}"
+    def add_series(
+        self,
+        title: str,
+        *,
+        year: int = 2020,
+        seasons: dict[int, int] | None = None,
+        flat: bool = False,
+        unaired: tuple[tuple[int, int], ...] = (),
+        seerr: bool = True,
+    ) -> SeriesRef:
+        tvdb, tmdb, imdb = (
+            stable_int("tvdb:" + title),
+            stable_int("tmdb:" + title),
+            f"tt{stable_int('imdb:' + title, 7)}",
+        )
         seasons = seasons or {1: 6}
-        self.series_catalog[tvdb] = {"title": title, "year": year, "tmdb": tmdb, "imdb": imdb, "seasons": {
-            sn: [{"number": n, "title": f"Episode {n}", "tvdb": stable_int(f"ep:{title}:{sn}:{n}", 7),
-                  "air": "2099-01-01T00:00:00Z" if (sn, n) in unaired else f"2025-0{min(sn, 9)}-{n:02d}T02:00:00Z"}
-                 for n in range(1, count + 1)] for sn, count in seasons.items()}}
+        self.series_catalog[tvdb] = {
+            "title": title,
+            "year": year,
+            "tmdb": tmdb,
+            "imdb": imdb,
+            "seasons": {
+                sn: [
+                    {
+                        "number": n,
+                        "title": f"Episode {n}",
+                        "tvdb": stable_int(f"ep:{title}:{sn}:{n}", 7),
+                        "air": "2099-01-01T00:00:00Z"
+                        if (sn, n) in unaired
+                        else f"2025-0{min(sn, 9)}-{n:02d}T02:00:00Z",
+                    }
+                    for n in range(1, count + 1)
+                ]
+                for sn, count in seasons.items()
+            },
+        }
         path = os.path.join(self.tv, title)
         os.makedirs(path, exist_ok=True)
         self.sonarr.create_series(tvdb, self.app(path), season_folder=not flat)
@@ -298,14 +404,30 @@ class Lab:
     def series_by_path(self, path: str) -> SeriesRef | None:
         return next((s for s in self.series_refs.values() if path.startswith(s.path + "/")), None)
 
-    def add_release(self, s: SeriesRef, season: int, episodes: list[int] | range, *, release: str | None = None,
-                    single_file: bool = False, category: str = "tv-sonarr", ratio: float = 0.0, seeding_days: float = 0.0,
-                    tracker: str = TRACKER, indexer: str = "ExampleTracker", size: int = 2000, rar: bool = False) -> Torrent:
+    def add_release(
+        self,
+        s: SeriesRef,
+        season: int,
+        episodes: list[int] | range,
+        *,
+        release: str | None = None,
+        single_file: bool = False,
+        category: str = "tv-sonarr",
+        ratio: float = 0.0,
+        seeding_days: float = 0.0,
+        tracker: str = TRACKER,
+        indexer: str = "ExampleTracker",
+        size: int = 2000,
+        rar: bool = False,
+    ) -> Torrent:
         """A torrent with these episodes, imported into the show (replacing older files: an upgrade)."""
         eps = list(episodes)
         dotted = s.title.replace(" ", ".")
-        release = release or (f"{dotted}.S{season:02d}E{eps[0]:02d}.1080p.WEB-DL-LAB" if len(eps) == 1
-                              else f"{dotted}.S{season:02d}.1080p.WEB-DL-LAB")
+        release = release or (
+            f"{dotted}.S{season:02d}E{eps[0]:02d}.1080p.WEB-DL-LAB"
+            if len(eps) == 1
+            else f"{dotted}.S{season:02d}.1080p.WEB-DL-LAB"
+        )
         base = os.path.join(self.downloads, category)
         disk = os.path.join(base, release + ".mkv") if single_file else os.path.join(base, release)
         t = self.add_torrent(release, disk, category=category, tracker=tracker, ratio=ratio, seeding_days=seeding_days)
@@ -327,9 +449,17 @@ class Lab:
                 os.link(src, lib)
             e = s.episode(season, n)
             s.sonarr.set_episode_file(s.record, [e], lib)
-            s.sonarr.add_history("grabbed", t.hash, release, {"indexer": f"{indexer} (Prowlarr)"}, seriesId=s.id, episodeId=e["id"])
-            s.sonarr.add_history("downloadFolderImported", t.hash, release,
-                                 {"importedPath": self.app(lib), "droppedPath": self.app(src)}, seriesId=s.id, episodeId=e["id"])
+            s.sonarr.add_history(
+                "grabbed", t.hash, release, {"indexer": f"{indexer} (Prowlarr)"}, seriesId=s.id, episodeId=e["id"]
+            )
+            s.sonarr.add_history(
+                "downloadFolderImported",
+                t.hash,
+                release,
+                {"importedPath": self.app(lib), "droppedPath": self.app(src)},
+                seriesId=s.id,
+                episodeId=e["id"],
+            )
         if not single_file:
             write(os.path.join(disk, release + ".nfo"), 10)
         s.torrents.append(t)
@@ -342,8 +472,15 @@ class Lab:
             s.sonarr.set_episode_file(s.record, [s.episode(season, n)], lib)
 
     # ------------------------------------------------------------------ other torrents
-    def add_cross_seed(self, t: Torrent, *, tracker: str = OTHER_TRACKER, same_path: bool = False, ratio: float = 0.0,
-                       seeding_days: float = 0.0) -> Torrent:
+    def add_cross_seed(
+        self,
+        t: Torrent,
+        *,
+        tracker: str = OTHER_TRACKER,
+        same_path: bool = False,
+        ratio: float = 0.0,
+        seeding_days: float = 0.0,
+    ) -> Torrent:
         """The same release from another tracker: seeding from the same folder, or from hardlinks to the same files."""
         if same_path:
             disk = t.disk_path
@@ -358,7 +495,9 @@ class Lab:
                         dest = os.path.join(disk, os.path.relpath(os.path.join(d, f), t.disk_path))
                         os.makedirs(os.path.dirname(dest), exist_ok=True)
                         os.link(os.path.join(d, f), dest)
-        x = self.add_torrent(t.name, disk, category="cross-seed", tracker=tracker, ratio=ratio, seeding_days=seeding_days)
+        x = self.add_torrent(
+            t.name, disk, category="cross-seed", tracker=tracker, ratio=ratio, seeding_days=seeding_days
+        )
         x.category = t.category if same_path else "cross-seed"
         return x
 
@@ -371,38 +510,82 @@ class Lab:
 
     # ------------------------------------------------------------------ Jellyfin webhook payloads
     def event(self, item_type: str, **kw: Any) -> dict[str, Any]:
-        base = {"notification_type": "ItemDeleted", "item_type": item_type, "item_id": None, "name": None, "path": None,
-                "tmdb_id": None, "tvdb_id": None, "imdb_id": None, "series_name": None, "series_id": None,
-                "season_number": None, "episode_number": None, "episode_end_number": None,
-                "occurred_at": "2026-10-16T00:00:00.0000000Z"}
+        base = {
+            "notification_type": "ItemDeleted",
+            "item_type": item_type,
+            "item_id": None,
+            "name": None,
+            "path": None,
+            "tmdb_id": None,
+            "tvdb_id": None,
+            "imdb_id": None,
+            "series_name": None,
+            "series_id": None,
+            "season_number": None,
+            "episode_number": None,
+            "episode_end_number": None,
+            "occurred_at": "2026-10-16T00:00:00.0000000Z",
+        }
         return {**base, **kw}
 
     def movie_event(self, m: MovieRef) -> dict[str, Any]:
-        return self.event("Movie", item_id=dashed(item_id(self.jellyfin.jf_path(m.file))), name=m.title, tmdb_id=m.tmdb,
-                          imdb_id=m.imdb)
+        return self.event(
+            "Movie",
+            item_id=dashed(item_id(self.jellyfin.jf_path(m.file))),
+            name=m.title,
+            tmdb_id=m.tmdb,
+            imdb_id=m.imdb,
+        )
 
     def series_event(self, s: SeriesRef) -> dict[str, Any]:
-        return self.event("Series", item_id=dashed(s.jellyfin_id), name=s.title, tvdb_id=s.tvdb, tmdb_id=s.tmdb, imdb_id=s.imdb)
+        return self.event(
+            "Series", item_id=dashed(s.jellyfin_id), name=s.title, tvdb_id=s.tvdb, tmdb_id=s.tmdb, imdb_id=s.imdb
+        )
 
     def season_event(self, s: SeriesRef, season: int) -> dict[str, Any]:
-        return self.event("Season", item_id=dashed(item_id(f"season:{s.title}:{season}")), name=f"Season {season}",
-                          series_name=s.title, series_id=dashed(s.jellyfin_id), season_number=season)
+        return self.event(
+            "Season",
+            item_id=dashed(item_id(f"season:{s.title}:{season}")),
+            name=f"Season {season}",
+            series_name=s.title,
+            series_id=dashed(s.jellyfin_id),
+            season_number=season,
+        )
 
     def episode_event(self, s: SeriesRef, season: int, number: int, end: int | None = None) -> dict[str, Any]:
         info = self.series_catalog[s.tvdb]["seasons"][season][number - 1]
-        return self.event("Episode", item_id=dashed(item_id(self.jellyfin.jf_path(s.episode_file(season, number)))),
-                          name=info["title"], tvdb_id=info["tvdb"], series_name=s.title, series_id=dashed(s.jellyfin_id),
-                          season_number=season, episode_number=number, episode_end_number=end)
+        return self.event(
+            "Episode",
+            item_id=dashed(item_id(self.jellyfin.jf_path(s.episode_file(season, number)))),
+            name=info["title"],
+            tvdb_id=info["tvdb"],
+            series_name=s.title,
+            series_id=dashed(s.jellyfin_id),
+            season_number=season,
+            episode_number=number,
+            episode_end_number=end,
+        )
 
     def event_for_item(self, it: dict[str, Any]) -> dict[str, Any]:
         """What Jellyfin's Webhook plugin sends after an item is deleted through its API."""
         if it["Type"] == "Movie":
             ids = it.get("ProviderIds") or {}
-            return self.event("Movie", item_id=dashed(it["Id"]), name=it["Name"], tmdb_id=int(ids["Tmdb"]) if ids.get("Tmdb") else None,
-                              imdb_id=ids.get("Imdb"))
-        return self.event("Episode", item_id=dashed(it["Id"]), name=it["Name"], series_name=it.get("SeriesName"),
-                          series_id=dashed(it["SeriesId"]) if it.get("SeriesId") else None,
-                          season_number=it.get("ParentIndexNumber"), episode_number=it.get("IndexNumber"))
+            return self.event(
+                "Movie",
+                item_id=dashed(it["Id"]),
+                name=it["Name"],
+                tmdb_id=int(ids["Tmdb"]) if ids.get("Tmdb") else None,
+                imdb_id=ids.get("Imdb"),
+            )
+        return self.event(
+            "Episode",
+            item_id=dashed(it["Id"]),
+            name=it["Name"],
+            series_name=it.get("SeriesName"),
+            series_id=dashed(it["SeriesId"]) if it.get("SeriesId") else None,
+            season_number=it.get("ParentIndexNumber"),
+            episode_number=it.get("IndexNumber"),
+        )
 
     # ------------------------------------------------------------------ deleting in the media server
     def delete_movie_files(self, m: MovieRef) -> None:
@@ -421,5 +604,10 @@ class Lab:
         shutil.rmtree(s.path, ignore_errors=True)
 
     def library_videos(self) -> list[str]:
-        return sorted(os.path.relpath(os.path.join(d, f), self.data) for root in (self.movies, self.tv)
-                      for d, _, fs in os.walk(root) for f in fs if re.search(r"\.(mkv|mp4)$", f))
+        return sorted(
+            os.path.relpath(os.path.join(d, f), self.data)
+            for root in (self.movies, self.tv)
+            for d, _, fs in os.walk(root)
+            for f in fs
+            if re.search(r"\.(mkv|mp4)$", f)
+        )

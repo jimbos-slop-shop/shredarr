@@ -67,30 +67,86 @@ class Shredarr:
         self.trackers = Trackers(self.connections)
         self.suppressions = Suppressions()
         self.queue = CleanupQueue(self.pending, self.library, self.activity)
-        self.deletes = MediaDeletes(self.config, self.connections, self.queue, self.activity, self.notifier, self.suppressions)
-        self.cleaner = Cleaner(self.config, self.connections, self.library, self.trackers, self.pending, self.overrides,
-                               self.history, self.redownloads, self.activity, self.notifier, settings.torrent_dir)
+        self.deletes = MediaDeletes(
+            self.config, self.connections, self.queue, self.activity, self.notifier, self.suppressions
+        )
+        self.cleaner = Cleaner(
+            self.config,
+            self.connections,
+            self.library,
+            self.trackers,
+            self.pending,
+            self.overrides,
+            self.history,
+            self.redownloads,
+            self.activity,
+            self.notifier,
+            settings.torrent_dir,
+        )
         self.removal = MediaRemoval(self.connections, self.suppressions)
-        self.delete_now = DeleteNow(self.config, self.connections, self.library, self.removal, self.cleaner, self.pending,
-                                    self.overrides, self.suppressions, self.activity, self.notifier)
-        self.orphans = Orphans(self.config, self.connections, self.library, self.removal, self.history, self.suppressions,
-                               self.activity, self.notifier)
+        self.delete_now = DeleteNow(
+            self.config,
+            self.connections,
+            self.library,
+            self.removal,
+            self.cleaner,
+            self.pending,
+            self.overrides,
+            self.suppressions,
+            self.activity,
+            self.notifier,
+        )
+        self.orphans = Orphans(
+            self.config,
+            self.connections,
+            self.library,
+            self.removal,
+            self.history,
+            self.suppressions,
+            self.activity,
+            self.notifier,
+        )
         self.restorer = Restorer(self.config, self.connections, self.library)
-        self.undo = Undo(self.config, self.connections, self.library, self.restorer, self.pending, self.activity, self.notifier)
-        self.redownloader = Redownloader(self.config, self.connections, self.library, self.restorer, self.history,
-                                         self.redownloads, self.activity, self.notifier, settings.torrent_dir)
+        self.undo = Undo(
+            self.config, self.connections, self.library, self.restorer, self.pending, self.activity, self.notifier
+        )
+        self.redownloader = Redownloader(
+            self.config,
+            self.connections,
+            self.library,
+            self.restorer,
+            self.history,
+            self.redownloads,
+            self.activity,
+            self.notifier,
+            settings.torrent_dir,
+        )
         self.cleaner.after_sweep.append(self.redownloader.check)
         self.auth = Auth(self.config, self.sessions, settings.reset_file, self.activity, self.notifier)
         self.health = Health(self.config, self.activity)
         self.updates = Updates(self.config, settings.repo, self.version)
         self.webhook = WebhookSetup(self.config, self.connections, self.activity)
-        self.dashboard = Dashboard(self.config, self.connections, self.library, self.trackers, self.cleaner, self.pending,
-                                   self.overrides, self.history, self.health, self.updates, self.webhook, self.version,
-                                   settings.repo, settings.torrent_dir)
+        self.dashboard = Dashboard(
+            self.config,
+            self.connections,
+            self.library,
+            self.trackers,
+            self.cleaner,
+            self.pending,
+            self.overrides,
+            self.history,
+            self.health,
+            self.updates,
+            self.webhook,
+            self.version,
+            settings.repo,
+            settings.torrent_dir,
+        )
         self.editor = SettingsEditor(self.config, self.overrides, self.activity, lambda: spawn(self.cleaner.safe_sweep))
         self.events: queue.Queue[JSON] = queue.Queue()
-        self.watcher = LibraryWatcher(self.library, self.suppressions, self.activity, self.events.put, settings.watch_file,
-                                      settings.watch_confirm)
+        self.watcher = LibraryWatcher(
+            self.library, self.suppressions, self.activity, self.events.put, settings.watch_file, settings.watch_confirm
+        )
 
     def settings_changed(self) -> None:
         """Connections were saved: new clients, and look everything up again."""
@@ -116,9 +172,11 @@ class Shredarr:
         deletes, problems = self.activity.repo.counts_since(since)
         waiting = self.pending.count()
         media = self.config.load().media_name
-        return (f"Last 24 hours: {plural(n, 'torrent')} cleaned up ({human(size)} freed), "
-                f"{plural(deletes, 'delete')} from {media}, {plural(problems, 'problem')}.\n"
-                f"Waiting for cleanup: {plural(waiting, 'torrent')}.")
+        return (
+            f"Last 24 hours: {plural(n, 'torrent')} cleaned up ({human(size)} freed), "
+            f"{plural(deletes, 'delete')} from {media}, {plural(problems, 'problem')}.\n"
+            f"Waiting for cleanup: {plural(waiting, 'torrent')}."
+        )
 
     # ------------------------------------------------------------------ background workers
     def start(self) -> None:

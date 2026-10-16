@@ -11,7 +11,10 @@ from .qbittorrent import QBittorrentClient
 from .transmission import TransmissionClient
 
 CLIENT_CLASSES: dict[str, type[QBittorrentClient] | type[TransmissionClient] | type[DelugeClient]] = {
-    "qbittorrent": QBittorrentClient, "transmission": TransmissionClient, "deluge": DelugeClient}
+    "qbittorrent": QBittorrentClient,
+    "transmission": TransmissionClient,
+    "deluge": DelugeClient,
+}
 
 
 def make_client(kind: str, conf: JSON, local: Callable[[str], str] | None = None) -> TorrentClient:

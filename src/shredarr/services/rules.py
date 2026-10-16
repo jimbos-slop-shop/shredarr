@@ -9,8 +9,13 @@ from ..config import JSON, Config, Rule
 from .trackers import tracker_host
 
 
-def rule_for(t: Torrent, overrides: dict[str, Rule], config: Config, title: str | None,
-             tracker_names: Callable[[], dict[str, str]]) -> Rule:
+def rule_for(
+    t: Torrent,
+    overrides: dict[str, Rule],
+    config: Config,
+    title: str | None,
+    tracker_names: Callable[[], dict[str, str]],
+) -> Rule:
     """The seeding rule for torrent t, and where it came from. First match wins:
     this torrent's own rule > show/movie rule > tracker rule > category rule > default."""
     if t["hash"] in overrides:
@@ -29,7 +34,12 @@ def rule_for(t: Torrent, overrides: dict[str, Rule], config: Config, title: str 
     for kind in ("title", "tracker", "category"):
         for r in extra:
             if r.get("type") == kind and r.get("match") and matches(kind, r["match"]):
-                return {"mode": r["mode"], "min_seed_days": r.get("min_seed_days"), "min_ratio": r.get("min_ratio"), "source": r["match"]}
+                return {
+                    "mode": r["mode"],
+                    "min_seed_days": r.get("min_seed_days"),
+                    "min_ratio": r.get("min_ratio"),
+                    "source": r["match"],
+                }
     return {**config.default_rule, "source": "default"}
 
 
@@ -40,8 +50,16 @@ def evaluate(r: Rule, t: Torrent) -> tuple[str, bool]:
         return "protected: never deleted", False
     days, ratio = t["seeding_time"] / 86400, t["ratio"]
     need_days, need_ratio = r.get("min_seed_days"), r.get("min_ratio")
-    need = [(f"seeded {days:.1f} of {need_days:g} days", days >= need_days)] if mode != "ratio" and need_days is not None else []
-    need += [(f"ratio {ratio:.2f} of {need_ratio:g}", ratio >= need_ratio)] if mode != "days" and need_ratio is not None else []
+    need = (
+        [(f"seeded {days:.1f} of {need_days:g} days", days >= need_days)]
+        if mode != "ratio" and need_days is not None
+        else []
+    )
+    need += (
+        [(f"ratio {ratio:.2f} of {need_ratio:g}", ratio >= need_ratio)]
+        if mode != "days" and need_ratio is not None
+        else []
+    )
     met = [ok for _, ok in need]
     done = t["progress"] >= 1 and (not met or (all(met) if mode == "both" else any(met)))
     return ", ".join(x for x, _ in need) or "no seeding rule", done
@@ -50,5 +68,9 @@ def evaluate(r: Rule, t: Torrent) -> tuple[str, bool]:
 def met_parts(r: Rule, t: Torrent) -> JSON:
     """Which halves of the rule are met (None when a half doesn't apply), for the dashboard's meters."""
     days, ratio = r.get("min_seed_days"), r.get("min_ratio")
-    return {"days_met": t["seeding_time"] / 86400 >= days if r["mode"] not in ("ratio", "never") and days is not None else None,
-            "ratio_met": t["ratio"] >= ratio if r["mode"] not in ("days", "never") and ratio is not None else None}
+    return {
+        "days_met": t["seeding_time"] / 86400 >= days
+        if r["mode"] not in ("ratio", "never") and days is not None
+        else None,
+        "ratio_met": t["ratio"] >= ratio if r["mode"] not in ("days", "never") and ratio is not None else None,
+    }

@@ -72,8 +72,11 @@ class FakeServer:
     # ------------------------------------------------------------------ recording
     def requests(self, method: str | None = None, path: str | None = None) -> list[Request]:
         """Recorded requests, optionally filtered by method and a path regex (full match)."""
-        return [r for r in list(self.calls)
-                if (method is None or r.method == method) and (path is None or re.fullmatch(path, r.path))]
+        return [
+            r
+            for r in list(self.calls)
+            if (method is None or r.method == method) and (path is None or re.fullmatch(path, r.path))
+        ]
 
     def clear_calls(self) -> None:
         self.calls.clear()
@@ -94,8 +97,13 @@ class FakeServer:
                 parsed = urllib.parse.urlsplit(self.path)
                 n = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(n) if n else b""
-                req = Request(self.command, parsed.path, {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()},
-                              {k.lower(): v for k, v in self.headers.items()}, body)
+                req = Request(
+                    self.command,
+                    parsed.path,
+                    {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()},
+                    {k.lower(): v for k, v in self.headers.items()},
+                    body,
+                )
                 fake.calls.append(req)
                 try:
                     resp = fake.dispatch(req)

@@ -15,8 +15,12 @@ GOLDEN = os.path.join(os.path.dirname(__file__), "golden")
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--impl", default=os.environ.get("SHREDARR_IMPL", "package"), choices=("package", "legacy"),
-                     help="which Shredarr to test: the package (src/shredarr) or the legacy single file")
+    parser.addoption(
+        "--impl",
+        default=os.environ.get("SHREDARR_IMPL", "package"),
+        choices=("package", "legacy"),
+        help="which Shredarr to test: the package (src/shredarr) or the legacy single file",
+    )
     parser.addoption("--update-goldens", action="store_true", help="rewrite tests/golden from this run")
 
 
@@ -40,7 +44,9 @@ def start(impl: str, lab: Lab, tmp_path: Any) -> Iterator[StartFn]:
     """start(**config overrides) -> a running Shredarr using the lab's apps. start(config=None) starts unconfigured."""
     running: list[Shredarr] = []
 
-    def _start(config: dict[str, Any] | None | bool = True, env: dict[str, str] | None = None, **overrides: Any) -> Shredarr:
+    def _start(
+        config: dict[str, Any] | bool | None = True, env: dict[str, str] | None = None, **overrides: Any
+    ) -> Shredarr:
         conf = lab.config(**overrides) if config is True else config or None
         s = Shredarr(impl, str(tmp_path / f"shredarr{len(running)}"), conf, env)
         running.append(s)
@@ -90,7 +96,8 @@ def normalize(value: Any, lab: Lab | None = None) -> Any:
 
 @pytest.fixture
 def golden(request: pytest.FixtureRequest, lab: Lab) -> Callable[[str, Any], None]:
-    """golden(label, data): compare data with tests/golden/<module>/<test>__<label>.json (written with --update-goldens)."""
+    """golden(label, data): compare data with tests/golden/<module>/<test>__<label>.json
+    (written with --update-goldens)."""
     update = request.config.getoption("--update-goldens")
     module = request.node.module.__name__.rsplit(".", 1)[-1]
     test = re.sub(r"\W+", "_", request.node.name)

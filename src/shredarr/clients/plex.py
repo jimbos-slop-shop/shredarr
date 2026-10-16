@@ -46,9 +46,11 @@ class PlexClient:
 
     def scan(self, section_key: str, path: str | None = None) -> None:
         """Scan a library section, or only one folder of it."""
+
         def run(s: PlexServer) -> None:
             key = f"/library/sections/{section_key}/refresh"
             s.query(key, params={"path": path} if path else None)
+
         self._call(run)
 
     def scan_all(self) -> None:

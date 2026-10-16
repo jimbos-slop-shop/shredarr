@@ -72,7 +72,9 @@ class RadarrClient(ArrClient):
         self.put(f"/movie/{movie['id']}", movie)
 
     def delete_movie(self, movie_id: int, *, delete_files: bool, add_exclusion: bool) -> None:
-        self.delete(f"/movie/{movie_id}", deleteFiles=str(delete_files).lower(), addImportExclusion=str(add_exclusion).lower())
+        self.delete(
+            f"/movie/{movie_id}", deleteFiles=str(delete_files).lower(), addImportExclusion=str(add_exclusion).lower()
+        )
 
     def movie_history(self, movie_id: int) -> list[JSON]:
         return list(self.get("/history/movie", movieId=movie_id))
@@ -104,8 +106,11 @@ class SonarrClient(ArrClient):
         self.put(f"/series/{series['id']}", series)
 
     def delete_series(self, series_id: int, *, delete_files: bool, add_exclusion: bool) -> None:
-        self.delete(f"/series/{series_id}", deleteFiles=str(delete_files).lower(),
-                    addImportListExclusion=str(add_exclusion).lower())
+        self.delete(
+            f"/series/{series_id}",
+            deleteFiles=str(delete_files).lower(),
+            addImportListExclusion=str(add_exclusion).lower(),
+        )
 
     def series_history(self, series_id: int) -> list[JSON]:
         return list(self.get("/history/series", seriesId=series_id))

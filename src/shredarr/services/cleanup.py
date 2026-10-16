@@ -48,9 +48,20 @@ def free_gb(ts: Torrents) -> float | None:
 
 
 class Cleaner:
-    def __init__(self, config: ConfigStore, connections: Connections, library: Library, trackers: Trackers,
-                 pending: PendingRepo, overrides: OverridesRepo, history: HistoryRepo, redownloads: RedownloadsRepo,
-                 activity: Activity, notifier: Notifier, torrent_dir: str) -> None:
+    def __init__(
+        self,
+        config: ConfigStore,
+        connections: Connections,
+        library: Library,
+        trackers: Trackers,
+        pending: PendingRepo,
+        overrides: OverridesRepo,
+        history: HistoryRepo,
+        redownloads: RedownloadsRepo,
+        activity: Activity,
+        notifier: Notifier,
+        torrent_dir: str,
+    ) -> None:
         self.config = config
         self.connections = connections
         self.library = library
@@ -84,7 +95,7 @@ class Cleaner:
             ov = self.overrides.all()
             if not rows and not ov and not self.redownloads.open():
                 return
-            ts = {t["hash"]: t for t in self.connections.torrents.list()}
+            ts = {t["hash"]: t for t in self.connections.torrents.all()}
             if ts:  # forget rules of torrents that no longer exist
                 self.overrides.remove(*[h for h in ov if h not in ts])
             groups = self.library.cross_seed_groups(list(ts.values()), 0)
@@ -113,8 +124,15 @@ class Cleaner:
                 except Exception as e:
                     self.activity.error(f"redownload check failed: {e}")
 
-    def check(self, c: Config, t: Torrent | None, name: str, r: Rule | None, added: float | None = None,
-              ctx: SweepContext | None = None) -> str | None:
+    def check(
+        self,
+        c: Config,
+        t: Torrent | None,
+        name: str,
+        r: Rule | None,
+        added: float | None = None,
+        ctx: SweepContext | None = None,
+    ) -> str | None:
         """A status for the dashboard, or None once the torrent is gone. r is the rule that applies."""
         if not t or not r:
             self.activity.info(f"torrent for {name} is gone from {c.client_name}; dropping it from the queue")
@@ -139,16 +157,23 @@ class Cleaner:
         if together and not orig:
             batch += sorted(x for x in groups.get(t["hash"], ()) if x != t["hash"] and x in ctx.pending and x in ts)
         if c.dry_run:
-            self.activity.info(f"[dry run] would have deleted torrent '{t['name']}' and its data ({progress})"
-                               + (f", with {len(batch) - 1} cross-seed{'s' * (len(batch) > 2)}" if len(batch) > 1 else ""))
+            self.activity.info(
+                f"[dry run] would have deleted torrent '{t['name']}' and its data ({progress})"
+                + (f", with {len(batch) - 1} cross-seed{'s' * (len(batch) > 2)}" if len(batch) > 1 else "")
+            )
             return f"[dry run] ready to delete; {progress}"
         for x, freed, kept in self.cleanup(batch, ts, groups, name, "seeding rule met"):
             own = x["hash"] == t["hash"]
-            self.activity.info(f"deleted torrent '{x['name']}'"
-                               + (" (its data stays: another torrent still seeds from it)" if kept else " and its data")
-                               + (f" ({progress})" if own else " (cross-seed, together with the original)"))
-            self.notifier.notify("Torrent cleaned up", f"{name}\n{x['name']} · {human(freed)} freed"
-                                 + (f" ({progress})" if own else " (cross-seed)"), "cleanup")
+            self.activity.info(
+                f"deleted torrent '{x['name']}'"
+                + (" (its data stays: another torrent still seeds from it)" if kept else " and its data")
+                + (f" ({progress})" if own else " (cross-seed, together with the original)")
+            )
+            self.notifier.notify(
+                "Torrent cleaned up",
+                f"{name}\n{x['name']} · {human(freed)} freed" + (f" ({progress})" if own else " (cross-seed)"),
+                "cleanup",
+            )
             if not own:
                 ctx.removed.add(x["hash"])
         return None
@@ -166,7 +191,11 @@ class Cleaner:
             self.pending.add(x, name, "cross-seed")
         for x, name in new:
             host = tracker_host(ts[x])
-            self.activity.info(f"  cross-seed '{ts[x]['name']}'" + (f" ({host})" if host else "") + f" of {name} queued for cleanup too")
+            self.activity.info(
+                f"  cross-seed '{ts[x]['name']}'"
+                + (f" ({host})" if host else "")
+                + f" of {name} queued for cleanup too"
+            )
         return bool(new)
 
     def low_space_pass(self, c: Config, ts: Torrents, ov: dict[str, Rule]) -> None:
@@ -186,20 +215,29 @@ class Cleaner:
             if p.added_at + c.grace_seconds > time.time():
                 continue
             if c.dry_run:
-                self.activity.info(f"[dry run] low disk space ({free:.0f} GB free): would have deleted '{t['name']}' early")
+                self.activity.info(
+                    f"[dry run] low disk space ({free:.0f} GB free): would have deleted '{t['name']}' early"
+                )
                 continue
-            self.activity.info(f"Low disk space ({free:.0f} GB free, minimum {ls['min_free_gb']:g} GB): deleting '{t['name']}' early")
-            [(_, freed, _)] = self.cleanup([p.hash], ts, self.library.cross_seed_groups(list(ts.values())), p.name, "low disk space")
+            self.activity.info(
+                f"Low disk space ({free:.0f} GB free, minimum {ls['min_free_gb']:g} GB): deleting '{t['name']}' early"
+            )
+            [(_, freed, _)] = self.cleanup(
+                [p.hash], ts, self.library.cross_seed_groups(list(ts.values())), p.name, "low disk space"
+            )
             self.pending.remove(p.hash)
-            self.notifier.notify("Torrent cleaned up early", f"Low disk space: {t['name']} · {human(freed)} freed", "cleanup")
+            self.notifier.notify(
+                "Torrent cleaned up early", f"Low disk space: {t['name']} · {human(freed)} freed", "cleanup"
+            )
             time.sleep(3)
             free = free_gb(ts)
             if free is not None and free >= ls["min_free_gb"]:
                 break
 
     # ------------------------------------------------------------------ deleting torrents
-    def cleanup(self, batch: list[str], ts: Torrents, groups: dict[str, set[str]], name: str,
-                reason: str) -> list[tuple[Torrent, int, bool]]:
+    def cleanup(
+        self, batch: list[str], ts: Torrents, groups: dict[str, set[str]], name: str, reason: str
+    ) -> list[tuple[Torrent, int, bool]]:
         """Delete these torrents (one, or an original with its cross-seeds), keeping History and Redownload info.
         Returns [(torrent, bytes freed, data kept)]."""
         gone = [(ts[h], self.library.cross_seed_of(h, ts, groups)) for h in batch if h in ts]
@@ -213,7 +251,9 @@ class Cleaner:
         """Delete torrents with their data, except when another torrent that stays still seeds from the same files (a
         cross-seed sharing the folder): then the torrent goes but the data stays. Removed torrents are taken out of ts.
         Returns ({hash: bytes freed}, {hashes whose data was kept})."""
-        going = [h for h in dict.fromkeys(hashes) if h in ts]  # in the order given: the first one is credited with shared data
+        going = [
+            h for h in dict.fromkeys(hashes) if h in ts
+        ]  # in the order given: the first one is credited with shared data
         keep_paths, keep_keys = set(), set()
         for x, t in ts.items():
             if x not in going:
@@ -222,7 +262,9 @@ class Cleaner:
                     if k := file_key(p):
                         keep_keys.add(k)
         freed: dict[str, int] = {}
-        with_data, without, seen = [], [], set()
+        with_data: list[str] = []
+        without: list[str] = []
+        seen: set[tuple[int, int]] = set()
         for h in going:
             t, n = ts[h], 0
             paths = files_under(t["content_path"])
@@ -258,8 +300,15 @@ class Cleaner:
             except Exception:  # best effort: never stands in the way of the cleanup itself
                 content = {"episodes": []}
         app = snap.get("app") or content.get("app")
-        out: JSON = {"hash": h, "name": t["name"], "category": t.get("category"), "episodes": content.get("episodes") or [],
-                     "movie": None, "series": None, "app": app}
+        out: JSON = {
+            "hash": h,
+            "name": t["name"],
+            "category": t.get("category"),
+            "episodes": content.get("episodes") or [],
+            "movie": None,
+            "series": None,
+            "app": app,
+        }
         try:
             if snap.get("kind") == "movie":
                 out["movie"] = snap["movie"]
@@ -286,5 +335,12 @@ class Cleaner:
 
     def record(self, t: Torrent, name: str, reason: str, restore: JSON | None = None, size: int | None = None) -> None:
         """Add a History entry."""
-        self.history.add(t["name"], t["size"] if size is None else size, title=self.library.title_of(t["hash"], name) or name,
-                         category=t.get("category"), reason=reason, h=t["hash"], restore=restore)
+        self.history.add(
+            t["name"],
+            t["size"] if size is None else size,
+            title=self.library.title_of(t["hash"], name) or name,
+            category=t.get("category"),
+            reason=reason,
+            h=t["hash"],
+            restore=restore,
+        )

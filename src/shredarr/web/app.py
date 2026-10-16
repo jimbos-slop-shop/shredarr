@@ -29,7 +29,9 @@ def create_app(core: Shredarr, *, start: bool = True) -> FastAPI:
             await run_in_threadpool(core.start)
         yield
 
-    app = FastAPI(title="Shredarr", version=core.version, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(
+        title="Shredarr", version=core.version, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+    )
     app.state.core = core
 
     @app.middleware("http")
@@ -38,8 +40,12 @@ def create_app(core: Shredarr, *, start: bool = True) -> FastAPI:
         path, method = request.url.path, request.method
         if method == "GET" and pages.static_file(core.settings.static_dir, path):
             return await call_next(request)
-        request.state.authed = is_local(request) or (core.auth.has_password and await run_in_threadpool(core.auth.valid, session_token(request)))
-        public = (method == "GET" and path in PUBLIC_GET) or (method == "POST" and (path in PUBLIC_POST or path.startswith(WEBHOOK)))
+        request.state.authed = is_local(request) or (
+            core.auth.has_password and await run_in_threadpool(core.auth.valid, session_token(request))
+        )
+        public = (method == "GET" and path in PUBLIC_GET) or (
+            method == "POST" and (path in PUBLIC_POST or path.startswith(WEBHOOK))
+        )
         if public or request.state.authed:
             return await call_next(request)
         if path.startswith("/api/") or request.headers.get("X-Fetch") or method == "POST":

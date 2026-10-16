@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import re
@@ -36,18 +37,29 @@ class FakeJellyfin(FakeServer):
     def __init__(self, lab: Lab) -> None:
         super().__init__()
         self.lab = lab
-        self.prefix: tuple[str, str] | None = None  # (lab path, Jellyfin path) when Jellyfin mounts the library elsewhere
+        self.prefix: tuple[str, str] | None = (
+            None  # (lab path, Jellyfin path) when Jellyfin mounts the library elsewhere
+        )
         self.plugin_config: dict[str, Any] = {"ServerUrl": "", "GenericOptions": []}
         self.webhook_target: tuple[str, str] | None = None  # (url, token): send ItemDeleted webhooks there
         self.route("GET", "/System/Info", self.auth(lambda r: {"Version": "10.11.0", "ServerName": "Lab"}))
         self.route("GET", "/Items", self.auth(self.items))
         self.route("DELETE", r"/Items/(?P<id>[0-9a-f]{32})", self.auth(self.delete))
-        self.route("GET", "/Library/VirtualFolders", self.auth(lambda r: [
-            {"Name": "Movies", "CollectionType": "movies", "Locations": [self.jf_path(self.lab.movies)]},
-            {"Name": "Shows", "CollectionType": "tvshows", "Locations": [self.jf_path(self.lab.tv)]}]))
+        self.route(
+            "GET",
+            "/Library/VirtualFolders",
+            self.auth(
+                lambda r: [
+                    {"Name": "Movies", "CollectionType": "movies", "Locations": [self.jf_path(self.lab.movies)]},
+                    {"Name": "Shows", "CollectionType": "tvshows", "Locations": [self.jf_path(self.lab.tv)]},
+                ]
+            ),
+        )
         self.route("POST", "/Library/Media/Updated", self.auth(lambda r: None))
         self.route("POST", "/Library/Refresh", self.auth(lambda r: None))
-        self.route("GET", "/Plugins", self.auth(lambda r: [{"Name": "Webhook", "Id": self.plugin_id, "Version": "18.0.0.0"}]))
+        self.route(
+            "GET", "/Plugins", self.auth(lambda r: [{"Name": "Webhook", "Id": self.plugin_id, "Version": "18.0.0.0"}])
+        )
         self.route("GET", rf"/Plugins/{self.plugin_id}/Configuration", self.auth(lambda r: self.plugin_config))
         self.route("POST", rf"/Plugins/{self.plugin_id}/Configuration", self.auth(self.save_plugin))
 
@@ -56,11 +68,12 @@ class FakeJellyfin(FakeServer):
             if r.headers.get("x-emby-token") != self.api_key:
                 return Response(401, "Unauthorized")
             return fn(r)
+
         return wrapped
 
     def jf_path(self, p: str) -> str:
         if self.prefix and p.startswith(self.prefix[0]):
-            return self.prefix[1] + p[len(self.prefix[0]):]
+            return self.prefix[1] + p[len(self.prefix[0]) :]
         return p
 
     def save_plugin(self, r: Request) -> None:
@@ -77,12 +90,24 @@ class FakeJellyfin(FakeServer):
                         out.append(self.describe(p, kind))
         for s in self.lab.series_refs.values():
             if os.path.isdir(s.path):
-                out.append({"Id": s.jellyfin_id, "Type": "Series", "Name": s.title, "Path": self.jf_path(s.path),
-                            "ProviderIds": {"Tvdb": str(s.tvdb), "Tmdb": str(s.tmdb), "Imdb": s.imdb}})
+                out.append(
+                    {
+                        "Id": s.jellyfin_id,
+                        "Type": "Series",
+                        "Name": s.title,
+                        "Path": self.jf_path(s.path),
+                        "ProviderIds": {"Tvdb": str(s.tvdb), "Tmdb": str(s.tmdb), "Imdb": s.imdb},
+                    }
+                )
         return out
 
     def describe(self, path: str, kind: str) -> dict[str, Any]:
-        it: dict[str, Any] = {"Id": item_id(path), "Type": kind, "Path": self.jf_path(path), "Name": os.path.splitext(os.path.basename(path))[0]}
+        it: dict[str, Any] = {
+            "Id": item_id(path),
+            "Type": kind,
+            "Path": self.jf_path(path),
+            "Name": os.path.splitext(os.path.basename(path))[0],
+        }
         if kind == "Movie":
             m = self.lab.movie_by_folder(os.path.dirname(path))
             if m:
@@ -93,8 +118,11 @@ class FakeJellyfin(FakeServer):
             if s:
                 it.update(SeriesName=s.title, SeriesId=s.jellyfin_id)
             if ep:
-                it.update(ParentIndexNumber=int(ep.group(1)), IndexNumber=int(ep.group(2)),
-                          IndexNumberEnd=int(ep.group(3)) if ep.group(3) else None)
+                it.update(
+                    ParentIndexNumber=int(ep.group(1)),
+                    IndexNumber=int(ep.group(2)),
+                    IndexNumberEnd=int(ep.group(3)) if ep.group(3) else None,
+                )
         return it
 
     def items(self, r: Request) -> dict[str, Any]:
@@ -124,12 +152,13 @@ class FakeJellyfin(FakeServer):
         assert self.webhook_target
         url, token = self.webhook_target
         payload = self.lab.event_for_item(it)
-        req = urllib.request.Request(url, data=__import__("json").dumps(payload).encode(),
-                                     headers={"Content-Type": "application/json", "X-Webhook-Token": token})
-        try:
+        req = urllib.request.Request(
+            url,
+            data=__import__("json").dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "X-Webhook-Token": token},
+        )
+        with contextlib.suppress(Exception):
             urllib.request.urlopen(req, timeout=10).read()
-        except Exception:
-            pass
 
 
 class FakePlex(FakeServer):
@@ -149,6 +178,7 @@ class FakePlex(FakeServer):
             if (r.headers.get("x-plex-token") or r.query.get("X-Plex-Token")) != self.token:
                 return Response(401, "Unauthorized")
             return fn(r)
+
         return wrapped
 
     @staticmethod
@@ -156,36 +186,64 @@ class FakePlex(FakeServer):
         return "application/json" in r.headers.get("accept", "")
 
     def root(self, r: Request) -> Response | dict[str, Any]:
-        attrs = {"friendlyName": "Lab Plex", "machineIdentifier": "lab0001", "version": "1.42.1.10060-4e8b05daf",
-                 "platform": "Linux", "myPlex": "0"}
+        attrs = {
+            "friendlyName": "Lab Plex",
+            "machineIdentifier": "lab0001",
+            "version": "1.42.1.10060-4e8b05daf",
+            "platform": "Linux",
+            "myPlex": "0",
+        }
         if self.wants_json(r):
             return {"MediaContainer": attrs}
         return self.xml("MediaContainer", attrs)
 
     def library(self, r: Request) -> Response:
-        return self.xml("MediaContainer", {"size": "2", "title1": "Plex Library"},
-                        '<Directory key="sections" title="Library Sections" />')
+        return self.xml(
+            "MediaContainer",
+            {"size": "2", "title1": "Plex Library"},
+            '<Directory key="sections" title="Library Sections" />',
+        )
 
     def section_list(self) -> list[dict[str, Any]]:
-        return [{"key": "1", "type": "movie", "title": "Movies", "agent": "tv.plex.agents.movie", "uuid": "m1",
-                 "Location": [{"id": 1, "path": self.lab.movies}]},
-                {"key": "2", "type": "show", "title": "TV Shows", "agent": "tv.plex.agents.series", "uuid": "s2",
-                 "Location": [{"id": 2, "path": self.lab.tv}]}]
+        return [
+            {
+                "key": "1",
+                "type": "movie",
+                "title": "Movies",
+                "agent": "tv.plex.agents.movie",
+                "uuid": "m1",
+                "Location": [{"id": 1, "path": self.lab.movies}],
+            },
+            {
+                "key": "2",
+                "type": "show",
+                "title": "TV Shows",
+                "agent": "tv.plex.agents.series",
+                "uuid": "s2",
+                "Location": [{"id": 2, "path": self.lab.tv}],
+            },
+        ]
 
     def sections(self, r: Request) -> Response | dict[str, Any]:
         secs = self.section_list()
         if self.wants_json(r):
             return {"MediaContainer": {"size": len(secs), "Directory": secs}}
         inner = "".join(
-            "<Directory " + " ".join(f"{k}={quoteattr(str(v))}" for k, v in s.items() if k != "Location") + ">"
-            + "".join(f'<Location id="{loc["id"]}" path={quoteattr(loc["path"])} />' for loc in s["Location"]) + "</Directory>"
-            for s in secs)
+            "<Directory "
+            + " ".join(f"{k}={quoteattr(str(v))}" for k, v in s.items() if k != "Location")
+            + ">"
+            + "".join(f'<Location id="{loc["id"]}" path={quoteattr(loc["path"])} />' for loc in s["Location"])
+            + "</Directory>"
+            for s in secs
+        )
         return self.xml("MediaContainer", {"size": str(len(secs)), "title1": "Plex Library"}, inner)
 
     @staticmethod
     def xml(tag: str, attrs: dict[str, str], inner: str = "") -> Response:
         a = " ".join(f"{k}={quoteattr(str(v))}" for k, v in attrs.items())
-        return Response(200, f'<?xml version="1.0" encoding="UTF-8"?>\n<{tag} {a}>{inner}</{tag}>', {"Content-Type": "text/xml"})
+        return Response(
+            200, f'<?xml version="1.0" encoding="UTF-8"?>\n<{tag} {a}>{inner}</{tag}>', {"Content-Type": "text/xml"}
+        )
 
     def refreshes(self) -> list[tuple[str, str | None]]:
         out = []
@@ -214,6 +272,7 @@ class FakeSeerr(FakeServer):
             if r.headers.get("x-api-key") != self.api_key:
                 return Response(403, {"message": "You do not have permission to access this endpoint"})
             return fn(r)
+
         return wrapped
 
     def add(self, kind: str, tmdb: int) -> int:

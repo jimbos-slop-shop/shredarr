@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sqlite3
+import time
 
 from tests.conftest import StartFn
 from tests.fakes.lab import Lab
@@ -29,8 +31,14 @@ def test_undo_movie(lab: Lab, start: StartFn, golden) -> None:
     golden("radarr_add", {k: added[k] for k in sorted(added) if k not in ("images",)})
     assert not lab.radarr.exclusions
     scan = [c["body"] for c in lab.radarr.commands.values()]
-    assert scan == [{"name": "DownloadedMoviesScan", "path": m.torrent.content_path, "downloadClientId": m.torrent.hash.upper(),
-                     "importMode": "Copy"}]
+    assert scan == [
+        {
+            "name": "DownloadedMoviesScan",
+            "path": m.torrent.content_path,
+            "downloadClientId": m.torrent.hash.upper(),
+            "importMode": "Copy",
+        }
+    ]
     assert lab.jellyfin.requests("POST", "/Library/Media/Updated")
     assert lab.seerr.requests("POST", "/api/v1/settings/jobs/radarr-scan/run")
     assert m.torrent.hash not in s.pending()
@@ -132,8 +140,11 @@ def test_redownload_by_search(lab: Lab, start: StartFn, golden) -> None:
         mark = len(s.log())
         s.post("/api/redownload", {"id": rows[name]["id"], "how": "search"})
         s.wait_log(r"^  done: asked (Radarr|Sonarr) to search", after=mark)
-    cmds = sorted((c["name"], c["body"].get("seasonNumber"), len(c["body"].get("episodeIds") or [])) for x in (lab.radarr, lab.sonarr)
-                  for c in x.commands.values())
+    cmds = sorted(
+        (c["name"], c["body"].get("seasonNumber"), len(c["body"].get("episodeIds") or []))
+        for x in (lab.radarr, lab.sonarr)
+        for c in x.commands.values()
+    )
     assert cmds == [("EpisodeSearch", None, 1), ("MoviesSearch", None, 0), ("SeasonSearch", 1, 0)]
     golden("log", sorted(s.log()[:12]) + s.log()[12:])  # the first two cleanups happen in the same sweep, in any order
 
@@ -142,16 +153,22 @@ def test_redownload_of_an_old_entry_is_parsed_from_the_name(lab: Lab, start: Sta
     lab.add_series("Paper Moons", seasons={1: 3})
     lab.movie_catalog[4242] = {"title": "Wing It", "year": 2023, "imdb": "tt42"}
     s = start()
-    import time
+
     s.sql("select 1")
-    import sqlite3
+
     con = sqlite3.connect(s.db_path)
-    con.execute("insert into cleaned (ts, name, size, title, category, reason) values (?,?,?,?,?,?)",
-                (time.time(), "Wing.It.2023.1080p.WEB-DL", 5, "Wing It", "radarr", "seeding rule met"))
-    con.execute("insert into cleaned (ts, name, size, title, category, reason) values (?,?,?,?,?,?)",
-                (time.time(), "Paper.Moons.S01E02.720p.HDTV", 5, "Paper Moons", "tv-sonarr", "seeding rule met"))
-    con.execute("insert into cleaned (ts, name, size, title, category, reason) values (?,?,?,?,?,?)",
-                (time.time(), "Totally Unknown Thing", 5, None, "misc", "Delete now"))
+    con.execute(
+        "insert into cleaned (ts, name, size, title, category, reason) values (?,?,?,?,?,?)",
+        (time.time(), "Wing.It.2023.1080p.WEB-DL", 5, "Wing It", "radarr", "seeding rule met"),
+    )
+    con.execute(
+        "insert into cleaned (ts, name, size, title, category, reason) values (?,?,?,?,?,?)",
+        (time.time(), "Paper.Moons.S01E02.720p.HDTV", 5, "Paper Moons", "tv-sonarr", "seeding rule met"),
+    )
+    con.execute(
+        "insert into cleaned (ts, name, size, title, category, reason) values (?,?,?,?,?,?)",
+        (time.time(), "Totally Unknown Thing", 5, None, "misc", "Delete now"),
+    )
     con.commit()
     con.close()
     rows = {r["name"]: r for r in s.api("/api/history")["rows"]}

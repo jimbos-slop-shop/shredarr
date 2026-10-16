@@ -63,8 +63,10 @@ class WebhookSetup:
         jellyfin = self.connections.jellyfin()
         plugin = jellyfin.webhook_plugin()
         if not plugin:
-            raise ServiceError("the Webhook plugin isn't installed in Jellyfin. Install it from Dashboard → Plugins → Catalog, "
-                               "restart Jellyfin, then try again")
+            raise ServiceError(
+                "the Webhook plugin isn't installed in Jellyfin. Install it from Dashboard → Plugins → Catalog, "
+                "restart Jellyfin, then try again"
+            )
         conf = jellyfin.plugin_configuration(plugin["Id"])
         options = conf.setdefault("GenericOptions", [])
         target = shredarr_url.rstrip("/") + WEBHOOK_PATH
@@ -72,11 +74,28 @@ class WebhookSetup:
         if mine is None:
             mine = {}
             options.append(mine)
-        mine.update({"NotificationTypes": ["ItemDeleted"], "WebhookName": "Shredarr", "WebhookUri": target, "EnableMovies": True,
-                     "EnableEpisodes": True, "EnableSeries": True, "EnableSeasons": True, "EnableAlbums": False, "EnableSongs": False,
-                     "EnableVideos": True, "SendAllProperties": False, "TrimWhitespace": False, "SkipEmptyMessageBody": False,
-                     "EnableWebhook": True, "Template": base64.b64encode(TEMPLATE.encode()).decode(), "UserFilter": [],
-                     "Headers": [{"Key": "X-Webhook-Token", "Value": token}], "Fields": []})
+        mine.update(
+            {
+                "NotificationTypes": ["ItemDeleted"],
+                "WebhookName": "Shredarr",
+                "WebhookUri": target,
+                "EnableMovies": True,
+                "EnableEpisodes": True,
+                "EnableSeries": True,
+                "EnableSeasons": True,
+                "EnableAlbums": False,
+                "EnableSongs": False,
+                "EnableVideos": True,
+                "SendAllProperties": False,
+                "TrimWhitespace": False,
+                "SkipEmptyMessageBody": False,
+                "EnableWebhook": True,
+                "Template": base64.b64encode(TEMPLATE.encode()).decode(),
+                "UserFilter": [],
+                "Headers": [{"Key": "X-Webhook-Token", "Value": token}],
+                "Fields": [],
+            }
+        )
         jellyfin.save_plugin_configuration(plugin["Id"], conf)
         self.activity.info(f"Jellyfin webhook set up: deletes are sent to {target}")
         return target

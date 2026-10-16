@@ -62,7 +62,9 @@ def command(impl: str) -> list[str]:
 
 
 class Shredarr:
-    def __init__(self, impl: str, workdir: str, config: dict[str, Any] | None, env: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, impl: str, workdir: str, config: dict[str, Any] | None, env: dict[str, str] | None = None
+    ) -> None:
         self.impl = impl
         self.config_dir = os.path.join(workdir, "config")
         os.makedirs(self.config_dir, exist_ok=True)
@@ -72,9 +74,17 @@ class Shredarr:
             self.write_config(config)
         self.port = free_port()
         self.base = f"http://127.0.0.1:{self.port}"
-        self.env = {**os.environ, "SHREDARR_CONFIG": self.config_path, "SHREDARR_DB": self.db_path,
-                    "SHREDARR_PORT": str(self.port), "SHREDARR_WATCH_INTERVAL": "0.5", "SHREDARR_WATCH_CONFIRM": "1.5",
-                    "PYTHONUNBUFFERED": "1", "TZ": "UTC", **(env or {})}
+        self.env = {
+            **os.environ,
+            "SHREDARR_CONFIG": self.config_path,
+            "SHREDARR_DB": self.db_path,
+            "SHREDARR_PORT": str(self.port),
+            "SHREDARR_WATCH_INTERVAL": "0.5",
+            "SHREDARR_WATCH_CONFIRM": "1.5",
+            "PYTHONUNBUFFERED": "1",
+            "TZ": "UTC",
+            **(env or {}),
+        }
         self.output_path = os.path.join(workdir, "shredarr.out")
         self.proc: subprocess.Popen[bytes] | None = None
         self.http = httpx.Client(base_url=self.base, timeout=60, follow_redirects=False)
@@ -113,7 +123,15 @@ class Shredarr:
             return f.read()
 
     def cli(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([*command(self.impl), *args], env=self.env, capture_output=True, text=True, cwd=ROOT, timeout=60)
+        return subprocess.run(
+            [*command(self.impl), *args],
+            env=self.env,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            timeout=60,
+            check=False,
+        )
 
     # ------------------------------------------------------------------ files
     def write_config(self, config: dict[str, Any]) -> None:
@@ -140,8 +158,15 @@ class Shredarr:
         assert r.status_code == 200, f"GET {path}: {r.status_code} {r.text}"
         return r.json()
 
-    def post(self, path: str, json_body: Any = None, *, data: Any = None, headers: dict[str, str] | None = None,
-             fetch: bool = True) -> httpx.Response:
+    def post(
+        self,
+        path: str,
+        json_body: Any = None,
+        *,
+        data: Any = None,
+        headers: dict[str, str] | None = None,
+        fetch: bool = True,
+    ) -> httpx.Response:
         h = {"X-Fetch": "1"} if fetch else {}
         return self.http.post(path, json=json_body, data=data, headers={**h, **(headers or {})})
 
@@ -158,19 +183,32 @@ class Shredarr:
     def wait_log(self, pattern: str, timeout: float = 20, after: int = 0) -> str:
         """Wait for a log line matching pattern; with after=n, only lines after the first n count."""
         rx = re.compile(pattern)
-        return wait_for(lambda: next((m for m in self.log()[after:] if rx.search(m)), None), timeout, 0.15,
-                        f"log line /{pattern}/")
+        return wait_for(
+            lambda: next((m for m in self.log()[after:] if rx.search(m)), None), timeout, 0.15, f"log line /{pattern}/"
+        )
 
     def pending(self) -> dict[str, dict[str, Any]]:
         rows = self.sql("select hash, name, source, status, undo, event, content from pending")
-        return {r[0]: {"name": r[1], "source": r[2], "status": r[3], "undo": json.loads(r[4]) if r[4] else None,
-                       "event": r[5], "content": json.loads(r[6]) if r[6] else None} for r in rows}
+        return {
+            r[0]: {
+                "name": r[1],
+                "source": r[2],
+                "status": r[3],
+                "undo": json.loads(r[4]) if r[4] else None,
+                "event": r[5],
+                "content": json.loads(r[6]) if r[6] else None,
+            }
+            for r in rows
+        }
 
     def wait_status(self, h: str, pattern: str, timeout: float = 20) -> str:
         rx = re.compile(pattern)
-        return wait_for(lambda: (s := (self.pending().get(h) or {}).get("status")) and rx.search(s) and s, timeout, 0.15,
-                        f"status /{pattern}/ of {h[:8]} (pending: {self.pending().get(h)})")
-
+        return wait_for(
+            lambda: (s := (self.pending().get(h) or {}).get("status")) and rx.search(s) and s,
+            timeout,
+            0.15,
+            f"status /{pattern}/ of {h[:8]} (pending: {self.pending().get(h)})",
+        )
 
     def sweep(self) -> None:
         r = self.post("/sweep")

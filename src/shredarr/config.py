@@ -16,25 +16,56 @@ from typing import Any, TypedDict
 
 JSON = dict[str, Any]
 
-MODES = {"either": "seed time OR ratio (whichever first)", "both": "seed time AND ratio",
-         "days": "seed time only", "ratio": "ratio only", "never": "never delete (protected)"}
+MODES = {
+    "either": "seed time OR ratio (whichever first)",
+    "both": "seed time AND ratio",
+    "days": "seed time only",
+    "ratio": "ratio only",
+    "never": "never delete (protected)",
+}
 CLIENTS = {"qbittorrent": "qBittorrent", "transmission": "Transmission", "deluge": "Deluge"}
 MEDIA_SERVERS = {"jellyfin": "Jellyfin", "plex": "Plex"}
-SERVICES = {"sonarr": "Sonarr", "radarr": "Radarr", "seerr": "Seerr", **CLIENTS, **MEDIA_SERVERS, "prowlarr": "Prowlarr"}
+SERVICES = {
+    "sonarr": "Sonarr",
+    "radarr": "Radarr",
+    "seerr": "Seerr",
+    **CLIENTS,
+    **MEDIA_SERVERS,
+    "prowlarr": "Prowlarr",
+}
 ARR_KINDS = ("sonarr", "radarr")
 OPTIONAL = ("seerr", "prowlarr")
 SECRET_KEYS = ("api_key", "password")  # never sent back to the browser
 API_SUFFIX = {"sonarr": "/api/v3", "radarr": "/api/v3", "seerr": "/api/v1", "prowlarr": "/api/v1"}
 
-BEHAVIOR_DEFAULTS = {"import_exclusion": True, "remove_from_seerr": True, "unmonitor": True, "remove_episode_files": True,
-                     "cross_seed_with_original": False}
+BEHAVIOR_DEFAULTS = {
+    "import_exclusion": True,
+    "remove_from_seerr": True,
+    "unmonitor": True,
+    "remove_episode_files": True,
+    "cross_seed_with_original": False,
+}
 LOW_SPACE_DEFAULTS: JSON = {"enabled": False, "min_free_gb": 100}
 POLICY_DEFAULTS: JSON = {"min_length": 8, "upper": False, "digit": False, "symbol": False}
-NOTIFY_DEFAULTS: JSON = {"discord_url": "", "discord_username": "Shredarr", "discord_avatar": "",
-                         "ntfy_server": "", "ntfy_topic": "", "ntfy_token": "", "ntfy_priority": "3",
-                         "pushover_user": "", "pushover_token": "", "pushover_priority": "0", "pushover_sound": "",
-                         "on_cleanup": True, "on_failure": True, "on_jellyfin": False, "on_undo": True,
-                         "daily_summary": True, "summary_time": "09:00"}
+NOTIFY_DEFAULTS: JSON = {
+    "discord_url": "",
+    "discord_username": "Shredarr",
+    "discord_avatar": "",
+    "ntfy_server": "",
+    "ntfy_topic": "",
+    "ntfy_token": "",
+    "ntfy_priority": "3",
+    "pushover_user": "",
+    "pushover_token": "",
+    "pushover_priority": "0",
+    "pushover_sound": "",
+    "on_cleanup": True,
+    "on_failure": True,
+    "on_jellyfin": False,
+    "on_undo": True,
+    "daily_summary": True,
+    "summary_time": "09:00",
+}
 DEFAULT_RULE: JSON = {"mode": "either", "min_seed_days": 14, "min_ratio": 2}
 
 
@@ -126,8 +157,11 @@ class Config:
     def arr_instances(self, kind: str | None = None) -> list[ArrInstance]:
         """Every Sonarr/Radarr: the main ones first, then any extra instances such as a 4K Radarr."""
         out = [ArrInstance(k, k, SERVICES[k], self.raw[k]) for k in ARR_KINDS if self.service(k).get("url")]
-        out += [ArrInstance(x["key"], x["kind"], x.get("name") or x["key"], x)
-                for x in self.raw.get("extra_arrs", []) if x.get("url") and x.get("key")]
+        out += [
+            ArrInstance(x["key"], x["kind"], x.get("name") or x["key"], x)
+            for x in self.raw.get("extra_arrs", [])
+            if x.get("url") and x.get("key")
+        ]
         return [x for x in out if not kind or x.kind == kind]
 
     def arr_name(self, key: str) -> str:
@@ -137,8 +171,11 @@ class Config:
         """(key, name, settings) of every app Shredarr uses: Sonarr/Radarr instances, the torrent client, the media
         server, and Seerr/Prowlarr if set up."""
         out = [(x.key, x.name, x.conf) for x in self.arr_instances()]
-        return out + [(k, SERVICES[k], self.raw[k]) for k in (self.client_kind, self.media_kind, "seerr", "prowlarr")
-                      if self.service(k).get("url")]
+        return out + [
+            (k, SERVICES[k], self.raw[k])
+            for k in (self.client_kind, self.media_kind, "seerr", "prowlarr")
+            if self.service(k).get("url")
+        ]
 
     @property
     def path_maps(self) -> list[JSON]:
@@ -148,8 +185,11 @@ class Config:
     @property
     def default_rule(self) -> Rule:
         r = self.raw.get("rules") or DEFAULT_RULE
-        return {"mode": r.get("mode") or r.get("require") or "either", "min_seed_days": r.get("min_seed_days"),
-                "min_ratio": r.get("min_ratio")}
+        return {
+            "mode": r.get("mode") or r.get("require") or "either",
+            "min_seed_days": r.get("min_seed_days"),
+            "min_ratio": r.get("min_ratio"),
+        }
 
     @property
     def rule_list(self) -> list[JSON]:
@@ -178,7 +218,7 @@ class Config:
 
     @property
     def check_interval(self) -> float:
-        return max(1, self.raw.get("check_interval_minutes", 15)) * 60
+        return float(max(1, self.raw.get("check_interval_minutes", 15))) * 60
 
     # ------------------------------------------------------------------ sign-in, notifications
     @property

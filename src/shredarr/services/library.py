@@ -10,6 +10,7 @@ Sonarr/Radarr history is slow on big libraries.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
@@ -48,11 +49,17 @@ class Library:
         self._titles = _Cache(value=({}, {}))
         self._in_library: dict[str, tuple[float, int]] = {}
 
-    def forget(self, *, roots: bool = True, imports: bool = True, index: bool = True, groups: bool = True,
-               titles: bool = True) -> None:
+    def forget(
+        self, *, roots: bool = True, imports: bool = True, index: bool = True, groups: bool = True, titles: bool = True
+    ) -> None:
         """Look again next time (after Shredarr changed things itself, or Settings changed)."""
-        for flag, cache in ((roots, self._roots), (imports, self._imports), (index, self._index), (groups, self._groups),
-                            (titles, self._titles)):
+        for flag, cache in (
+            (roots, self._roots),
+            (imports, self._imports),
+            (index, self._index),
+            (groups, self._groups),
+            (titles, self._titles),
+        ):
             if flag:
                 cache.t = 0
 
@@ -65,10 +72,8 @@ class Library:
         if not self._roots.fresh(300):
             paths, dirs = self.connections.paths(), []
             for _, arr in self.connections.arrs():
-                try:
+                with contextlib.suppress(ServiceError):
                     dirs += [paths.local(r["path"].rstrip("/")) for r in arr.root_folders()]
-                except ServiceError:
-                    pass
             self._roots = _Cache(time.time(), sorted(set(dirs)))
         return list(self._roots.value)
 
@@ -84,7 +89,7 @@ class Library:
             name = "/" + os.path.basename(root) + "/"
             i = p.find(name)
             if i >= 0:
-                return root + p[i + len(name) - 1:]
+                return root + p[i + len(name) - 1 :]
         return p
 
     def index(self, max_age: float = 300) -> dict[FileKey, str]:
@@ -122,12 +127,20 @@ class Library:
         owner: dict[str, str] = {}
         for inst, arr in self.connections.arrs():
             try:
-                for h in arr.history(DOWNLOAD_FOLDER_IMPORTED, newest_first=True):  # so the first import of a path is the one there now
+                for h in arr.history(
+                    DOWNLOAD_FOLDER_IMPORTED, newest_first=True
+                ):  # so the first import of a path is the one there now
                     if h.get("downloadId"):
                         path = self.library_path((h.get("data") or {}).get("importedPath"))
                         m.setdefault(h["downloadId"].lower(), []).append(
-                            {"app": inst.key, "path": path, "movieId": h.get("movieId"), "seriesId": h.get("seriesId"),
-                             "episodeId": h.get("episodeId")})
+                            {
+                                "app": inst.key,
+                                "path": path,
+                                "movieId": h.get("movieId"),
+                                "seriesId": h.get("seriesId"),
+                                "episodeId": h.get("episodeId"),
+                            }
+                        )
                         if path:
                             owner.setdefault(path, h["downloadId"].lower())
             except ServiceError as e:
@@ -140,8 +153,11 @@ class Library:
         """Library paths Sonarr/Radarr imported from torrent h that still exist and weren't replaced by a later import
         (an upgrade from another download)."""
         owner = self.import_owner(max_age)
-        return {i["path"] for i in self.imports(max_age).get(h, [])
-                if i["path"] and owner.get(i["path"]) == h and os.path.exists(i["path"])}
+        return {
+            i["path"]
+            for i in self.imports(max_age).get(h, [])
+            if i["path"] and owner.get(i["path"]) == h and os.path.exists(i["path"])
+        }
 
     def torrent_content(self, h: str) -> JSON:
         """Which movie or episodes a torrent was imported as (season packs and complete series included). Saved before
@@ -202,6 +218,7 @@ class Library:
         def has_torrent(p: str) -> bool:
             k = file_key(p)
             return k is None or k in keys or owner.get(p) in hashes
+
         return has_torrent
 
     # ------------------------------------------------------------------ cross-seeds
@@ -217,6 +234,7 @@ class Library:
             while parent.setdefault(x, x) != x:
                 parent[x] = x = parent[parent[x]]
             return x
+
         for t in ts:
             for k in self.torrent_keys(t):
                 if k in first:
@@ -231,7 +249,8 @@ class Library:
         return m
 
     def group_original(self, group: set[str], ts: dict[str, Torrent]) -> str:
-        """The torrent of a cross-seed group that Sonarr/Radarr imported (else the oldest). The others are its cross-seeds."""
+        """The torrent of a cross-seed group that Sonarr/Radarr imported (else the oldest). The others are its
+        cross-seeds."""
         imap = self.imports()
         members = [h for h in group if h in ts] or list(group)  # ts loses torrents as they're deleted
         tracked = [h for h in members if h in imap]

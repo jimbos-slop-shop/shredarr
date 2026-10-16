@@ -1,4 +1,4 @@
-"""Process settings, from environment variables. Everything users change lives in config.json instead (see config.py)."""
+"""Process settings, from environment variables. Everything users change lives in config.json (see config.py)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 class Settings:
     config_path: str = "/config/config.json"
     db_path: str = "/config/state.db"
-    host: str = "0.0.0.0"  # noqa: S104 (a container: reachable from the host and other containers)
+    host: str = "0.0.0.0"
     port: int = 8089
     repo: str = "jschaef80/shredarr"  # where update checks look for new releases
     watch_interval: float = 60  # Plex library watch: seconds between looks at the library folders

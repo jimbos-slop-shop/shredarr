@@ -13,20 +13,33 @@ from contextlib import contextmanager
 
 
 def _v1_shredarr_1x(con: sqlite3.Connection) -> None:
-    con.execute("create table if not exists pending (hash text primary key, name text, source text, added_at real, status text)")
+    con.execute(
+        "create table if not exists pending (hash text primary key, name text, source text, added_at real, status text)"
+    )
     con.execute("create table if not exists log (id integer primary key, ts real, msg text)")
     have = {r[1] for r in con.execute("pragma table_info(pending)")}
-    for col, typ in (("rule_mode", "text"), ("rule_days", "real"), ("rule_ratio", "real"), ("undo", "text"), ("event", "text"),
-                     ("content", "text")):
+    for col, typ in (
+        ("rule_mode", "text"),
+        ("rule_days", "real"),
+        ("rule_ratio", "real"),
+        ("undo", "text"),
+        ("event", "text"),
+        ("content", "text"),
+    ):
         if col not in have:
             con.execute(f"alter table pending add column {col} {typ}")
     # per-torrent seeding rules used to live in pending; any torrent without a row follows the default rule
     con.execute("create table if not exists overrides (hash text primary key, mode text, days real, ratio real)")
-    con.execute("insert or ignore into overrides select hash, rule_mode, rule_days, rule_ratio from pending where rule_mode is not null")
+    con.execute(
+        "insert or ignore into overrides select hash, rule_mode, rule_days, rule_ratio from pending "
+        "where rule_mode is not null"
+    )
     con.execute("update pending set rule_mode = null where rule_mode is not null")
     con.execute("create table if not exists sessions (token text primary key, created real, expires real)")
-    con.execute("create table if not exists redownloads (hash text primary key, ts real, app text, title text, "
-                "tries integer default 0, last_try real, done integer default 0)")
+    con.execute(
+        "create table if not exists redownloads (hash text primary key, ts real, app text, title text, "
+        "tries integer default 0, last_try real, done integer default 0)"
+    )
     con.execute("create table if not exists cleaned (ts real, name text, size integer)")
     have = {r[1] for r in con.execute("pragma table_info(cleaned)")}
     for col in ("title", "category", "reason", "hash", "restore", "redl_ts", "redl_how"):

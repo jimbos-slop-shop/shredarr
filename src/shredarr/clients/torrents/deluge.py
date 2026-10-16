@@ -18,15 +18,35 @@ from ...config import JSON
 from ..base import TIMEOUT, ServiceError, ServiceHTTPError, ServiceUnreachable
 from .base import Torrent
 
-KEYS = ["name", "save_path", "download_location", "total_wanted", "progress", "ratio", "seeding_time", "state",
-        "upload_payload_rate", "download_payload_rate", "time_added", "label", "trackers"]
+KEYS = [
+    "name",
+    "save_path",
+    "download_location",
+    "total_wanted",
+    "progress",
+    "ratio",
+    "seeding_time",
+    "state",
+    "upload_payload_rate",
+    "download_payload_rate",
+    "time_added",
+    "label",
+    "trackers",
+]
 
 
 def state(t: JSON) -> str:
     done, st = t["progress"] >= 100, t.get("state") or ""
-    return {"Seeding": "uploading" if t["upload_payload_rate"] else "stalledUP", "Downloading": "downloading", "Error": "error",
-            "Checking": "checkingUP", "Moving": "moving", "Allocating": "allocating",
-            "Paused": "pausedUP" if done else "pausedDL", "Queued": "queuedUP" if done else "queuedDL"}.get(st, st.lower())
+    return {
+        "Seeding": "uploading" if t["upload_payload_rate"] else "stalledUP",
+        "Downloading": "downloading",
+        "Error": "error",
+        "Checking": "checkingUP",
+        "Moving": "moving",
+        "Allocating": "allocating",
+        "Paused": "pausedUP" if done else "pausedDL",
+        "Queued": "queuedUP" if done else "queuedDL",
+    }.get(st, st.lower())
 
 
 class DelugeClient:
@@ -60,11 +80,24 @@ class DelugeClient:
         out: list[Torrent] = []
         for h, t in res.items():
             save = t.get("download_location") or t.get("save_path") or ""
-            out.append({"hash": h.lower(), "name": t["name"], "save_path": save, "content_path": os.path.join(save, t["name"]),
-                        "size": t["total_wanted"], "progress": t["progress"] / 100, "ratio": max(0.0, t["ratio"]),
-                        "seeding_time": t.get("seeding_time") or 0, "state": state(t), "upspeed": t["upload_payload_rate"],
-                        "dlspeed": t["download_payload_rate"], "added_on": int(t["time_added"]), "category": t.get("label") or "",
-                        "tracker": ((t.get("trackers") or [{}])[0]).get("url", "")})
+            out.append(
+                {
+                    "hash": h.lower(),
+                    "name": t["name"],
+                    "save_path": save,
+                    "content_path": os.path.join(save, t["name"]),
+                    "size": t["total_wanted"],
+                    "progress": t["progress"] / 100,
+                    "ratio": max(0.0, t["ratio"]),
+                    "seeding_time": t.get("seeding_time") or 0,
+                    "state": state(t),
+                    "upspeed": t["upload_payload_rate"],
+                    "dlspeed": t["download_payload_rate"],
+                    "added_on": int(t["time_added"]),
+                    "category": t.get("label") or "",
+                    "tracker": ((t.get("trackers") or [{}])[0]).get("url", ""),
+                }
+            )
         return out
 
     def remove(self, hashes: list[str], with_data: bool) -> None:

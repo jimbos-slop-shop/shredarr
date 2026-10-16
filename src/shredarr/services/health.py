@@ -60,13 +60,18 @@ class Updates:
             self.info.clear()
             return
         try:
-            r = httpx.get(f"https://api.github.com/repos/{self.repo}/releases/latest", timeout=TIMEOUT,
-                          headers={"User-Agent": "Shredarr", "Accept": "application/vnd.github+json"})
+            r = httpx.get(
+                f"https://api.github.com/repos/{self.repo}/releases/latest",
+                timeout=TIMEOUT,
+                headers={"User-Agent": "Shredarr", "Accept": "application/vnd.github+json"},
+            )
             r.raise_for_status()
             data = r.json()
         except (httpx.HTTPError, ValueError) as e:
             return log.warning("update check: %s", e)
         latest = (data.get("tag_name") or "").lstrip("v")
         self.info.clear()
-        self.info.update(latest=latest, url=data.get("html_url"), newer=version_tuple(latest) > version_tuple(self.version))
+        self.info.update(
+            latest=latest, url=data.get("html_url"), newer=version_tuple(latest) > version_tuple(self.version)
+        )
         return None

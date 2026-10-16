@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import logging
@@ -32,7 +33,9 @@ def hash_password(pw: str, salt: str | None = None) -> JSON:
 
 
 class Auth:
-    def __init__(self, config: ConfigStore, sessions: SessionsRepo, reset_file: str, activity: Activity, notifier: Notifier) -> None:
+    def __init__(
+        self, config: ConfigStore, sessions: SessionsRepo, reset_file: str, activity: Activity, notifier: Notifier
+    ) -> None:
         self.config = config
         self.sessions = sessions
         self.reset_file = reset_file
@@ -102,12 +105,16 @@ class Auth:
             code = "-".join(secrets.token_hex(2).upper() for _ in range(3))
             self._reset.update(code=code, expires=time.time() + RESET_VALID, made=time.time(), tries=0)
         with open(self.reset_file, "w") as f:
-            f.write(f"Shredarr password reset code: {code}\nValid until {time.strftime('%H:%M', time.localtime(self._reset['expires']))}.\n")
+            f.write(
+                f"Shredarr password reset code: {code}\n"
+                f"Valid until {time.strftime('%H:%M', time.localtime(self._reset['expires']))}.\n"
+            )
         os.chmod(self.reset_file, 0o600)
         log.warning("[reset] password reset code: %s (valid 15 minutes)", code)
         self.activity.info("Password reset code requested")
-        self.notifier.send_in_background(self.config.load().notify, "Shredarr password reset",
-                                         f"Your reset code is {code}. It works for 15 minutes.")
+        self.notifier.send_in_background(
+            self.config.load().notify, "Shredarr password reset", f"Your reset code is {code}. It works for 15 minutes."
+        )
         return True
 
     def use_reset_code(self, code: str) -> bool:
@@ -119,8 +126,6 @@ class Auth:
             if not hmac.compare_digest(code.strip().upper(), r["code"]):
                 return False
             r.update(code=None, expires=0)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.remove(self.reset_file)
-        except FileNotFoundError:
-            pass
         return True

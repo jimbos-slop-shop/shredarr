@@ -48,21 +48,42 @@ class PendingRepo:
 
     def by_event(self, event: str, exclude: str) -> list[Pending]:
         with self.db.connect() as con:
-            return [self._row(r) for r in con.execute(f"select {self.COLUMNS} from pending where event=? and hash!=?", (event, exclude))]
+            return [
+                self._row(r)
+                for r in con.execute(f"select {self.COLUMNS} from pending where event=? and hash!=?", (event, exclude))
+            ]
 
     def content(self, h: str) -> JSON | None:
         with self.db.connect() as con:
             r = con.execute("select content from pending where hash=?", (h,)).fetchone()
         return json.loads(r[0]) if r and r[0] else None
 
-    def add(self, h: str, name: str, source: str, *, undo: JSON | None = None, event: str | None = None,
-            content: JSON | None = None) -> bool:
+    def add(
+        self,
+        h: str,
+        name: str,
+        source: str,
+        *,
+        undo: JSON | None = None,
+        event: str | None = None,
+        content: JSON | None = None,
+    ) -> bool:
         """Queue a torrent. Returns False if it was already queued (nothing changes then)."""
         with self.db.connect() as con:
-            cur = con.execute("insert or ignore into pending (hash, name, source, added_at, status, undo, event, content) "
-                              "values (?,?,?,?,?,?,?,?)",
-                              (h, name, source, time.time(), "queued", json.dumps(undo) if undo else None, event,
-                               json.dumps(content) if content is not None else None))
+            cur = con.execute(
+                "insert or ignore into pending (hash, name, source, added_at, status, undo, event, content) "
+                "values (?,?,?,?,?,?,?,?)",
+                (
+                    h,
+                    name,
+                    source,
+                    time.time(),
+                    "queued",
+                    json.dumps(undo) if undo else None,
+                    event,
+                    json.dumps(content) if content is not None else None,
+                ),
+            )
             return cur.rowcount > 0
 
     def set_undo(self, h: str, undo: JSON) -> None:
@@ -93,8 +114,10 @@ class OverridesRepo:
 
     def all(self) -> dict[str, Rule]:
         with self.db.connect() as con:
-            return {h: {"mode": m, "min_seed_days": d, "min_ratio": r}
-                    for h, m, d, r in con.execute("select hash, mode, days, ratio from overrides")}
+            return {
+                h: {"mode": m, "min_seed_days": d, "min_ratio": r}
+                for h, m, d, r in con.execute("select hash, mode, days, ratio from overrides")
+            }
 
     def set(self, h: str, mode: str, days: float | None, ratio: float | None) -> None:
         with self.db.connect() as con:
@@ -156,18 +179,43 @@ class HistoryRepo:
 
     @staticmethod
     def _row(r: tuple[Any, ...]) -> Cleaned:
-        return Cleaned(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], json.loads(r[8]) if r[8] else None,
-                       float(r[9]) if r[9] else None, r[10])
+        return Cleaned(
+            r[0],
+            r[1],
+            r[2],
+            r[3],
+            r[4],
+            r[5],
+            r[6],
+            r[7],
+            json.loads(r[8]) if r[8] else None,
+            float(r[9]) if r[9] else None,
+            r[10],
+        )
 
-    def add(self, name: str, size: int, *, title: str | None, category: str | None, reason: str, h: str | None,
-            restore: JSON | None) -> None:
+    def add(
+        self,
+        name: str,
+        size: int,
+        *,
+        title: str | None,
+        category: str | None,
+        reason: str,
+        h: str | None,
+        restore: JSON | None,
+    ) -> None:
         with self.db.connect() as con:
-            con.execute("insert into cleaned (ts, name, size, title, category, reason, hash, restore) values (?,?,?,?,?,?,?,?)",
-                        (time.time(), name, size, title, category, reason, h, json.dumps(restore) if restore else None))
+            con.execute(
+                "insert into cleaned (ts, name, size, title, category, reason, hash, restore) values (?,?,?,?,?,?,?,?)",
+                (time.time(), name, size, title, category, reason, h, json.dumps(restore) if restore else None),
+            )
 
     def recent(self, limit: int = 1000) -> list[Cleaned]:
         with self.db.connect() as con:
-            return [self._row(r) for r in con.execute(f"select {self.COLUMNS} from cleaned order by ts desc limit ?", (limit,))]
+            return [
+                self._row(r)
+                for r in con.execute(f"select {self.COLUMNS} from cleaned order by ts desc limit ?", (limit,))
+            ]
 
     def get(self, row_id: int) -> Cleaned | None:
         with self.db.connect() as con:
@@ -182,7 +230,9 @@ class HistoryRepo:
         """(bytes freed ever, cleanups ever, bytes freed in the last 30 days)."""
         with self.db.connect() as con:
             size, count = con.execute("select coalesce(sum(size), 0), count(*) from cleaned").fetchone()
-            last30 = con.execute("select coalesce(sum(size), 0) from cleaned where ts > ?", (time.time() - 30 * 86400,)).fetchone()[0]
+            last30 = con.execute(
+                "select coalesce(sum(size), 0) from cleaned where ts > ?", (time.time() - 30 * 86400,)
+            ).fetchone()[0]
         return int(size), int(count), int(last30)
 
     def since(self, ts: float) -> tuple[int, int]:
@@ -210,12 +260,18 @@ class RedownloadsRepo:
 
     def add(self, h: str, app: str, title: str) -> None:
         with self.db.connect() as con:
-            con.execute("insert or replace into redownloads (hash, ts, app, title, tries, last_try, done) values (?,?,?,?,0,0,0)",
-                        (h, time.time(), app, title))
+            con.execute(
+                "insert or replace into redownloads (hash, ts, app, title, tries, last_try, done) "
+                "values (?,?,?,?,0,0,0)",
+                (h, time.time(), app, title),
+            )
 
     def open(self) -> list[Redownload]:
         with self.db.connect() as con:
-            return [Redownload(*r) for r in con.execute("select hash, ts, app, title, tries, last_try from redownloads where done=0")]
+            return [
+                Redownload(*r)
+                for r in con.execute("select hash, ts, app, title, tries, last_try from redownloads where done=0")
+            ]
 
     def done(self, h: str) -> None:
         with self.db.connect() as con:
@@ -243,9 +299,14 @@ class ActivityRepo:
     def counts_since(self, ts: float) -> tuple[int, int]:
         """(deletes reported by the media server, problems) since ts."""
         with self.db.connect() as con:
-            deletes = con.execute("select count(*) from log where ts > ? and (msg like 'Jellyfin deleted%' or msg like 'Plex deleted%')",
-                                  (ts,)).fetchone()[0]
+            deletes = con.execute(
+                "select count(*) from log where ts > ? and (msg like 'Jellyfin deleted%' or msg like 'Plex deleted%')",
+                (ts,),
+            ).fetchone()[0]
             # lines from before problems were marked are recognized by their wording, as they used to be
-            problems = con.execute("select count(*) from log where ts > ? and (level = 'error' or (level is null and "
-                                   "(msg like '%FAILED%' or msg like '%failed%')))", (ts,)).fetchone()[0]
+            problems = con.execute(
+                "select count(*) from log where ts > ? and (level = 'error' or (level is null and "
+                "(msg like '%FAILED%' or msg like '%failed%')))",
+                (ts,),
+            ).fetchone()[0]
         return int(deletes), int(problems)

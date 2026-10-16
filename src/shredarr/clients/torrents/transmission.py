@@ -9,14 +9,34 @@ from contextlib import contextmanager
 from typing import Any
 
 import transmission_rpc
-from transmission_rpc.error import TransmissionAuthError, TransmissionConnectError, TransmissionError, TransmissionTimeoutError
+from transmission_rpc.error import (
+    TransmissionAuthError,
+    TransmissionConnectError,
+    TransmissionError,
+    TransmissionTimeoutError,
+)
 
 from ...config import JSON
 from ..base import TIMEOUT, ServiceError, ServiceUnreachable
 from .base import Torrent
 
-FIELDS = ["hashString", "name", "downloadDir", "sizeWhenDone", "percentDone", "uploadRatio", "secondsSeeding", "status", "error",
-          "rateUpload", "rateDownload", "addedDate", "labels", "trackers", "torrentFile"]
+FIELDS = [
+    "hashString",
+    "name",
+    "downloadDir",
+    "sizeWhenDone",
+    "percentDone",
+    "uploadRatio",
+    "secondsSeeding",
+    "status",
+    "error",
+    "rateUpload",
+    "rateDownload",
+    "addedDate",
+    "labels",
+    "trackers",
+    "torrentFile",
+]
 STATES = {1: "checkingUP", 2: "checkingUP", 3: "queuedDL", 4: "downloading", 5: "queuedUP"}  # 0 = stopped, 6 = seeding
 
 
@@ -49,32 +69,48 @@ class TransmissionClient:
         path = u.path if u.path.endswith("/rpc") else u.path + "/transmission/rpc"
         self.local = local or (lambda p: p)
         with _errors():
-            self.api = transmission_rpc.Client(protocol="https" if u.scheme == "https" else "http", host=u.hostname or "localhost",
-                                               port=u.port or (443 if u.scheme == "https" else 80), path=path,
-                                               username=conf.get("username") or None, password=conf.get("password") or None,
-                                               timeout=TIMEOUT)
+            self.api = transmission_rpc.Client(
+                protocol="https" if u.scheme == "https" else "http",
+                host=u.hostname or "localhost",
+                port=u.port or (443 if u.scheme == "https" else 80),
+                path=path,
+                username=conf.get("username") or None,
+                password=conf.get("password") or None,
+                timeout=TIMEOUT,
+            )
 
     @staticmethod
     def _torrent(f: JSON) -> Torrent:
         labels = f.get("labels") or []
         trackers: list[Any] = f.get("trackers") or [{}]
-        return {"hash": f["hashString"].lower(), "name": f["name"], "save_path": f["downloadDir"],
-                "content_path": os.path.join(f["downloadDir"], f["name"]), "size": f["sizeWhenDone"], "progress": f["percentDone"],
-                "ratio": max(0.0, f["uploadRatio"]), "seeding_time": f.get("secondsSeeding") or 0, "state": state(f),
-                "upspeed": f["rateUpload"], "dlspeed": f["rateDownload"], "added_on": f["addedDate"],
-                "category": labels[0] if labels else os.path.basename(f["downloadDir"].rstrip("/")),
-                "tracker": trackers[0].get("announce", "")}
+        return {
+            "hash": f["hashString"].lower(),
+            "name": f["name"],
+            "save_path": f["downloadDir"],
+            "content_path": os.path.join(f["downloadDir"], f["name"]),
+            "size": f["sizeWhenDone"],
+            "progress": f["percentDone"],
+            "ratio": max(0.0, f["uploadRatio"]),
+            "seeding_time": f.get("secondsSeeding") or 0,
+            "state": state(f),
+            "upspeed": f["rateUpload"],
+            "dlspeed": f["rateDownload"],
+            "added_on": f["addedDate"],
+            "category": labels[0] if labels else os.path.basename(f["downloadDir"].rstrip("/")),
+            "tracker": trackers[0].get("announce", ""),
+        }
 
     def _fields(self, hashes: list[str] | None) -> list[JSON]:
         with _errors():
-            return [t.fields for t in self.api.get_torrents(ids=hashes or None, arguments=FIELDS)]
+            ids: list[int | str] | None = list(hashes) if hashes else None
+            return [t.fields for t in self.api.get_torrents(ids=ids, arguments=FIELDS)]
 
     def torrents(self, hashes: list[str] | None = None) -> list[Torrent]:
         return [self._torrent(f) for f in self._fields(hashes)]
 
     def remove(self, hashes: list[str], with_data: bool) -> None:
         with _errors():
-            self.api.remove_torrent(ids=hashes, delete_data=with_data)
+            self.api.remove_torrent(ids=list[int | str](hashes), delete_data=with_data)
 
     def export(self, h: str) -> bytes | None:
         """Transmission keeps .torrent files in its own config folder; readable only if that folder is mounted here."""

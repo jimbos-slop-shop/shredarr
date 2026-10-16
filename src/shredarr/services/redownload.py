@@ -3,6 +3,7 @@ again ("same release") or by having Sonarr/Radarr search for a new release."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import time
@@ -24,9 +25,18 @@ NUDGE_TRIES = 3
 
 
 class Redownloader:
-    def __init__(self, config: ConfigStore, connections: Connections, library: Library, restorer: Restorer,
-                 history: HistoryRepo, redownloads: RedownloadsRepo, activity: Activity, notifier: Notifier,
-                 torrent_dir: str) -> None:
+    def __init__(
+        self,
+        config: ConfigStore,
+        connections: Connections,
+        library: Library,
+        restorer: Restorer,
+        history: HistoryRepo,
+        redownloads: RedownloadsRepo,
+        activity: Activity,
+        notifier: Notifier,
+        torrent_dir: str,
+    ) -> None:
         self.config = config
         self.connections = connections
         self.library = library
@@ -52,26 +62,51 @@ class Redownloader:
             if info.get("cross_seed_of"):
                 raise ServiceError(f"it was a cross-seed of '{info['cross_seed_of']}'. Redownload that one instead")
             if info.get("movie") or info.get("series"):
-                if kind_of(info.get("app")) not in ARR_KINDS or not any(x.key == info["app"] for x in self.config.load().arr_instances()):
-                    info["app"] = "radarr" if info.get("movie") else "sonarr"  # older entry, or that instance was removed since
+                if kind_of(info.get("app")) not in ARR_KINDS or not any(
+                    x.key == info["app"] for x in self.config.load().arr_instances()
+                ):
+                    info["app"] = (
+                        "radarr" if info.get("movie") else "sonarr"
+                    )  # older entry, or that instance was removed since
                 return info
-        info = {"hash": row.hash, "name": row.name, "category": row.category, "movie": None, "series": None, "episodes": []}
-        order = ("sonarr", "radarr") if re.search(r"tv|sonarr|show|series", row.category or "", re.I) else ("radarr", "sonarr")
+        info = {
+            "hash": row.hash,
+            "name": row.name,
+            "category": row.category,
+            "movie": None,
+            "series": None,
+            "episodes": [],
+        }
+        order = (
+            ("sonarr", "radarr")
+            if re.search(r"tv|sonarr|show|series", row.category or "", re.I)
+            else ("radarr", "sonarr")
+        )
         for app in order:
             try:
                 arr = self.connections.arr(app)
                 pr = arr.parse(row.name)
             except ServiceError:
                 continue
-            if isinstance(arr, RadarrClient) and (pr.get("movie") or (pr.get("parsedMovieInfo") or {}).get("movieTitles")):
+            if isinstance(arr, RadarrClient) and (
+                pr.get("movie") or (pr.get("parsedMovieInfo") or {}).get("movieTitles")
+            ):
                 m = pr.get("movie")
                 if not m:
                     pm = pr["parsedMovieInfo"]
                     found = arr.lookup(f"{pm['movieTitles'][0]} {pm.get('year') or ''}".strip())
                     m = found[0] if found else None
                 if m:
-                    info.update(app="radarr", movie={"tmdbId": m["tmdbId"], "title": m["title"], "year": m.get("year"), "monitored": True,
-                                                     "minimumAvailability": m.get("minimumAvailability") or "released"})
+                    info.update(
+                        app="radarr",
+                        movie={
+                            "tmdbId": m["tmdbId"],
+                            "title": m["title"],
+                            "year": m.get("year"),
+                            "monitored": True,
+                            "minimumAvailability": m.get("minimumAvailability") or "released",
+                        },
+                    )
                     return info
             if isinstance(arr, SonarrClient) and pr.get("parsedEpisodeInfo"):
                 pe = pr["parsedEpisodeInfo"]
@@ -80,10 +115,18 @@ class Redownloader:
                     found = arr.lookup(pe.get("seriesTitle") or row.title or row.name)
                     sr = found[0] if found else None
                 if sr:
-                    info.update(app="sonarr", series={"tvdbId": sr["tvdbId"], "title": sr["title"], "monitored": True, "seasonFolder": True,
-                                                      "seasons": []},
-                                episodes=[[pe["seasonNumber"], n] for n in pe.get("episodeNumbers") or []],
-                                full_seasons=[pe["seasonNumber"]] if pe.get("fullSeason") else [])
+                    info.update(
+                        app="sonarr",
+                        series={
+                            "tvdbId": sr["tvdbId"],
+                            "title": sr["title"],
+                            "monitored": True,
+                            "seasonFolder": True,
+                            "seasons": [],
+                        },
+                        episodes=[[pe["seasonNumber"], n] for n in pe.get("episodeNumbers") or []],
+                        full_seasons=[pe["seasonNumber"]] if pe.get("fullSeason") else [],
+                    )
                     return info
         raise ServiceError("Shredarr couldn't tell which movie or show this was")
 
@@ -98,13 +141,29 @@ class Redownloader:
         else:
             eps = episodes_text(info.get("episodes") or [])
             full = info.get("full_seasons") or []
-            what = f"'{info['series']['title']}'" + (f" {eps}" if eps else (f" season {', '.join(map(str, full))}" if full else ""))
-            first = f"Put '{info['series']['title']}' back in {app} if it was removed, and monitor {eps or 'those episodes'}"
+            what = f"'{info['series']['title']}'" + (
+                f" {eps}" if eps else (f" season {', '.join(map(str, full))}" if full else "")
+            )
+            first = (
+                f"Put '{info['series']['title']}' back in {app} if it was removed, "
+                f"and monitor {eps or 'those episodes'}"
+            )
             search = f"Have {app} search for " + (eps or "them") + " (whole seasons as season packs)"
         done = f"When it finishes, it's imported into your library and shows up in {c.media_name}"
-        return {"what": what, "app": info["app"], "same_available": bool(self.saved_torrent(info.get("hash"))),
-                "steps": {"same": [first, f"Add the original torrent back to {c.client_name} ({info['name']}), so the same release downloads again", done],
-                          "search": [first, search, done]}}
+        return {
+            "what": what,
+            "app": info["app"],
+            "same_available": bool(self.saved_torrent(info.get("hash"))),
+            "steps": {
+                "same": [
+                    first,
+                    f"Add the original torrent back to {c.client_name} ({info['name']}), "
+                    "so the same release downloads again",
+                    done,
+                ],
+                "search": [first, search, done],
+            },
+        }
 
     def run(self, row_id: int, how: str) -> None:
         try:
@@ -113,7 +172,9 @@ class Redownloader:
             return self.activity.error(f"Redownload failed: {e}")
         is_movie = kind_of(info["app"]) == "radarr"
         title = info["movie"]["title"] if is_movie else info["series"]["title"]
-        self.activity.info(f"Redownload: {title}" + ("" if is_movie else f" {episodes_text(info.get('episodes') or [])}"))
+        self.activity.info(
+            f"Redownload: {title}" + ("" if is_movie else f" {episodes_text(info.get('episodes') or [])}")
+        )
         try:
             arr = self.connections.arr(info["app"])
             if isinstance(arr, RadarrClient):
@@ -127,12 +188,16 @@ class Redownloader:
                 assert isinstance(arr, SonarrClient)
                 series_id, episode_ids, whole, full_series = self.monitor_episodes(arr, info)
             if how == "same":
-                path = self.saved_torrent(info.get("hash")) or os.path.join(self.torrent_dir, (info.get("hash") or "") + ".torrent")
+                path = self.saved_torrent(info.get("hash")) or os.path.join(
+                    self.torrent_dir, (info.get("hash") or "") + ".torrent"
+                )
                 with open(path, "rb") as f:
                     content = f.read()
                 self.connections.torrents.add(content, os.path.basename(path), info.get("category") or "")
                 self.redownloads.add(info["hash"], info["app"], title)
-                self.activity.info(f"  done: added the original torrent back to {self.config.load().client_name} ({info['name']})")
+                self.activity.info(
+                    f"  done: added the original torrent back to {self.config.load().client_name} ({info['name']})"
+                )
             elif isinstance(arr, RadarrClient):
                 arr.command("MoviesSearch", movieIds=movie_ids)
                 self.activity.info("  done: asked Radarr to search for it")
@@ -147,17 +212,22 @@ class Redownloader:
                 rest = [i for i in episode_ids if i not in in_whole]
                 if rest:
                     arr.command("EpisodeSearch", episodeIds=rest)
-                self.activity.info("  done: asked Sonarr to search for " + (f"season {', '.join(map(str, whole))}" if whole else "")
-                                   + (" and " if whole and rest else "") + (f"{len(rest)} episode{'s' * (len(rest) != 1)}" if rest else ""))
+                self.activity.info(
+                    "  done: asked Sonarr to search for "
+                    + (f"season {', '.join(map(str, whole))}" if whole else "")
+                    + (" and " if whole and rest else "")
+                    + (f"{len(rest)} episode{'s' * (len(rest) != 1)}" if rest else "")
+                )
             seerr = self.connections.seerr()
             if seerr:
-                try:
+                with contextlib.suppress(ServiceError):
                     seerr.sync(kind_of(info["app"]))
-                except ServiceError:
-                    pass
             self.history.mark_redownloaded(row_id, how)
-            self.notifier.notify("Redownload started", f"{title}: " + ("re-adding the original torrent" if how == "same" else "searching for a release"),
-                                 "undo")
+            self.notifier.notify(
+                "Redownload started",
+                f"{title}: " + ("re-adding the original torrent" if how == "same" else "searching for a release"),
+                "undo",
+            )
         except Exception as e:  # reported in the activity log
             self.activity.error(f"  FAILED: redownload of {title}: {e}")
         return None
@@ -166,7 +236,11 @@ class Redownloader:
         """Put the show back if needed and monitor the episodes. Returns (series id, episode ids, whole seasons,
         whether that's the whole show)."""
         sn = info["series"]
-        snap = {"series": {k: v for k, v in sn.items() if k != "seasons"}, "seasons": sn.get("seasons") or [], "monitored_eps": []}
+        snap = {
+            "series": {k: v for k, v in sn.items() if k != "seasons"},
+            "seasons": sn.get("seasons") or [],
+            "monitored_eps": [],
+        }
         self.activity.info("  done: " + self.restorer.ensure_series(sonarr, snap))
         sr = next(x for x in sonarr.all_series() if x["tvdbId"] == sn["tvdbId"])
         eps = wait_for(lambda: sonarr.episodes(sr["id"]), timeout=90) or []
@@ -176,7 +250,9 @@ class Redownloader:
         if ids:
             sonarr.set_monitored(ids, True)
         seasons = sorted({e["seasonNumber"] for e in eps if e["id"] in ids})
-        whole = [n for n in seasons if all(e["id"] in ids for e in eps if e["seasonNumber"] == n and e.get("airDateUtc"))]
+        whole = [
+            n for n in seasons if all(e["id"] in ids for e in eps if e["seasonNumber"] == n and e.get("airDateUtc"))
+        ]
         aired_seasons = {e["seasonNumber"] for e in eps if e["seasonNumber"] > 0 and e.get("airDateUtc")}
         full_series = bool(seasons) and set(whole) == aired_seasons
         if whole:
@@ -197,8 +273,13 @@ class Redownloader:
             self.library.forget(roots=False, index=False, groups=False, titles=False)
             if self.library.in_library(t):
                 self.redownloads.done(r.hash)
-                media_server(self.connections).rescan([i["path"] for i in self.library.imports(0).get(r.hash, [])
-                                                       if i["path"] and os.path.exists(i["path"])])
+                media_server(self.connections).rescan(
+                    [
+                        i["path"]
+                        for i in self.library.imports(0).get(r.hash, [])
+                        if i["path"] and os.path.exists(i["path"])
+                    ]
+                )
                 self.activity.info(f"Redownload finished: '{r.title}' is back in your library")
                 self.notifier.notify("Redownload finished", f"{r.title} is back in your library", "undo")
                 continue

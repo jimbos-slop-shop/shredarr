@@ -26,7 +26,9 @@ class CleanupQueue:
         self.library = library
         self.activity = activity
 
-    def add(self, hashes: Iterable[str], name: str, source: str, undo: JSON | None = None, event: str | None = None) -> int:
+    def add(
+        self, hashes: Iterable[str], name: str, source: str, undo: JSON | None = None, event: str | None = None
+    ) -> int:
         """Queue torrents (download ids from Sonarr/Radarr history). Returns how many weren't queued already."""
         hashes = list(hashes)
         new = 0

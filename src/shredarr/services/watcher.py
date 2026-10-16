@@ -18,8 +18,15 @@ MASS_VANISH = (20, 0.2)  # more files than this, and more than this share of the
 
 
 class LibraryWatcher:
-    def __init__(self, library: Library, suppressions: Suppressions, activity: Activity, report: Callable[[JSON], None],
-                 state_file: str, confirm: float) -> None:
+    def __init__(
+        self,
+        library: Library,
+        suppressions: Suppressions,
+        activity: Activity,
+        report: Callable[[JSON], None],
+        state_file: str,
+        confirm: float,
+    ) -> None:
         self.library = library
         self.suppressions = suppressions
         self.activity = activity
@@ -31,7 +38,8 @@ class LibraryWatcher:
         self.offline = False
 
     def library_files(self) -> dict[str, list[int]] | None:
-        """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be read."""
+        """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be
+        read."""
         dirs = self.library.root_dirs()
         if not dirs or not all(os.path.isdir(d) for d in dirs):
             return None
@@ -57,7 +65,9 @@ class LibraryWatcher:
         now = self.library_files()
         if now is None:
             if not self.offline:
-                self.activity.info("Library watch paused: a Sonarr/Radarr root folder can't be read (check the /data mount)")
+                self.activity.info(
+                    "Library watch paused: a Sonarr/Radarr root folder can't be read (check the /data mount)"
+                )
             self.offline = True
             return
         if self.offline:
@@ -67,8 +77,10 @@ class LibraryWatcher:
         gone = [p for p in (prev or {}) if p not in now]
         if prev and len(gone) > MASS_VANISH[0] and len(gone) > MASS_VANISH[1] * len(prev):
             # a disk or share that went away isn't a delete: keep the old list and look again next time
-            return self.activity.info(f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
-                                      "going offline, not a delete, so nothing was done")
+            return self.activity.info(
+                f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "
+                "going offline, not a delete, so nothing was done"
+            )
         self.files = now
         with open(self.state_file + ".tmp", "w") as f:
             json.dump(now, f)

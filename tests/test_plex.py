@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from tests.conftest import StartFn
 from tests.fakes.lab import Lab
@@ -33,7 +34,7 @@ def test_upgrade_or_rename_is_not_a_delete(lab: Lab, start: StartFn) -> None:
     watching(s)
     os.rename(m.file, m.file.replace("Bluray-1080p", "Remux-1080p"))  # renamed: same inode
     lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.2160p-UPGRADE")  # replaced by a new file
-    import time
+
     time.sleep(4)
     assert not any("deleted" in x for x in s.log()), s.log()
 
@@ -90,9 +91,9 @@ def test_delete_now_and_undo_rescan_plex(lab: Lab, start: StartFn, golden) -> No
     lab.plex.clear_calls()
     s.post("/api/undo", {"hash": u.torrent.hash})
     s.wait_log("^  done: re-imported")
-    wait_for(lambda: lab.plex.refreshes(), what="a Plex scan")
+    wait_for(lab.plex.refreshes, what="a Plex scan")
     assert lab.plex.refreshes() == [("1", u.folder)]
-    import time
+
     time.sleep(3)
     assert not any("Plex deleted Movie: Big Buck Bunny" in x for x in s.log()), "Shredarr's own delete isn't reported"
     golden("log", [x for x in s.log() if "Raygun" not in x or "Undo" in x])

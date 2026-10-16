@@ -38,7 +38,9 @@ def test_first_run_setup_and_sign_in(lab: Lab, start: StartFn, golden) -> None:
     assert r.status_code == 400 and "at least 8 characters" in r.text
     r = c.post("/setup", data={"new": "correct horse", "confirm": "correct horse"})
     assert r.status_code == 303 and r.headers["location"] == "/settings"
-    assert re.search(r"shredarr_session=[\w-]+; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax$", r.headers["set-cookie"])
+    assert re.search(
+        r"shredarr_session=[\w-]+; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax$", r.headers["set-cookie"]
+    )
     assert c.get("/api/torrents").status_code == 200
     assert c.post("/setup", data={"new": "x", "confirm": "x"}).status_code == 403
     assert set(s.read_config()["auth"]) == {"salt", "hash"}
@@ -91,7 +93,10 @@ def test_password_reset_with_a_code(lab: Lab, start: StartFn) -> None:
         code = re.search(r"code: (\w{4}-\w{4}-\w{4})", f.read()).group(1)  # type: ignore[union-attr]
     wait_for(lambda: "Shredarr password reset" in lab.ntfy.titles(), what="reset code notification")
     assert code in lab.ntfy.messages()[-1]["message"]
-    assert c.post("/reset", data={"code": "AAAA-BBBB-CCCC", "new": "new password", "confirm": "new password"}).status_code == 400
+    assert (
+        c.post("/reset", data={"code": "AAAA-BBBB-CCCC", "new": "new password", "confirm": "new password"}).status_code
+        == 400
+    )
     r = c.post("/reset", data={"code": code.lower(), "new": "new password", "confirm": "new password"})
     assert r.status_code == 303 and "shredarr_session=" in r.headers["set-cookie"]
     assert not os.path.exists(os.path.join(s.config_dir, "RESET-CODE.txt"))
@@ -102,8 +107,13 @@ def test_password_reset_with_a_code(lab: Lab, start: StartFn) -> None:
 def test_public_paths_and_page(lab: Lab, start: StartFn) -> None:
     s = start()
     assert s.get("/health").text == "ok"
-    for p, ctype in (("/logo.svg", "image/svg+xml"), ("/logo.png", "image/png"), ("/favicon.ico", "image/png"),
-                     ("/static/app.js", "text/javascript"), ("/static/app.css", "text/css")):
+    for p, ctype in (
+        ("/logo.svg", "image/svg+xml"),
+        ("/logo.png", "image/png"),
+        ("/favicon.ico", "image/png"),
+        ("/static/app.js", "text/javascript"),
+        ("/static/app.css", "text/css"),
+    ):
         r = s.get(p)
         assert r.status_code == 200 and r.headers["content-type"].startswith(ctype), p
         assert r.headers["cache-control"] == "max-age=86400"
@@ -132,33 +142,53 @@ def test_save_connections(lab: Lab, start: StartFn, golden) -> None:
     s = start()
     wait_for(lambda: len(s.api("/api/health")) == 5, what="the first health check")
     lab.radarr.api_key = "new-key"  # so the health check after saving stays quiet
-    r = s.post("/api/connections", {
-        "sonarr": {"url": lab.sonarr.url + "/", "api_key": ""},  # blank key: keep the saved one
-        "radarr": {"url": lab.radarr.url + "/api/v3", "api_key": "new-key"},
-        "seerr": {"url": ""},  # optional and blank: removed
-        "plex": {"url": "http://plex:32400", "api_key": "t"},
-        "media_server": "jellyfin", "torrent_client": "qbittorrent",
-        "extra_arrs": [{"kind": "radarr", "name": "Radarr 4K", "url": "http://radarr4k:7878", "api_key": "k4"},
-                       {"kind": "radarr", "name": "Radarr 4K", "url": "http://other:7878", "api_key": "k5"},
-                       {"kind": "bogus", "url": "http://x"}, {"kind": "sonarr", "url": ""}],
-        "unknown": {"url": "http://x"},
-    })
+    r = s.post(
+        "/api/connections",
+        {
+            "sonarr": {"url": lab.sonarr.url + "/", "api_key": ""},  # blank key: keep the saved one
+            "radarr": {"url": lab.radarr.url + "/api/v3", "api_key": "new-key"},
+            "seerr": {"url": ""},  # optional and blank: removed
+            "plex": {"url": "http://plex:32400", "api_key": "t"},
+            "media_server": "jellyfin",
+            "torrent_client": "qbittorrent",
+            "extra_arrs": [
+                {"kind": "radarr", "name": "Radarr 4K", "url": "http://radarr4k:7878", "api_key": "k4"},
+                {"kind": "radarr", "name": "Radarr 4K", "url": "http://other:7878", "api_key": "k5"},
+                {"kind": "bogus", "url": "http://x"},
+                {"kind": "sonarr", "url": ""},
+            ],
+            "unknown": {"url": "http://x"},
+        },
+    )
     assert r.status_code == 200
     c = s.read_config()
-    golden("config", {k: c[k] for k in ("sonarr", "radarr", "plex", "extra_arrs") if k in c} | {"has_seerr": "seerr" in c})
+    golden(
+        "config", {k: c[k] for k in ("sonarr", "radarr", "plex", "extra_arrs") if k in c} | {"has_seerr": "seerr" in c}
+    )
     s.wait_log("Connection settings saved")
     assert s.post("/api/behavior", {"unmonitor": False, "bogus": True}).status_code == 200
-    assert s.read_config()["behavior"] == {"import_exclusion": True, "remove_from_seerr": True, "unmonitor": False,
-                                           "remove_episode_files": True, "cross_seed_with_original": False}
+    assert s.read_config()["behavior"] == {
+        "import_exclusion": True,
+        "remove_from_seerr": True,
+        "unmonitor": False,
+        "remove_episode_files": True,
+        "cross_seed_with_original": False,
+    }
     assert s.post("/api/update-check", {"enabled": False}).status_code == 200
     assert s.read_config()["update_check"] is False
-    rules = [{"type": "tracker", "match": " example.org ", "mode": "days", "min_seed_days": "3", "min_ratio": ""},
-             {"type": "title", "match": "", "mode": "days"}, {"type": "x", "match": "y", "mode": "days"},
-             {"type": "category", "match": "tv", "mode": "bogus"}]
+    rules = [
+        {"type": "tracker", "match": " example.org ", "mode": "days", "min_seed_days": "3", "min_ratio": ""},
+        {"type": "title", "match": "", "mode": "days"},
+        {"type": "x", "match": "y", "mode": "days"},
+        {"type": "category", "match": "tv", "mode": "bogus"},
+    ]
     assert s.post("/api/rule-list", {"rules": rules}).status_code == 200
-    assert s.read_config()["rule_list"] == [{"type": "tracker", "match": "example.org", "mode": "days", "min_seed_days": 3.0,
-                                             "min_ratio": None}]
-    assert s.post("/api/password-policy", {"min_length": "12", "upper": 1, "digit": 0, "symbol": True}).status_code == 200
+    assert s.read_config()["rule_list"] == [
+        {"type": "tracker", "match": "example.org", "mode": "days", "min_seed_days": 3.0, "min_ratio": None}
+    ]
+    assert (
+        s.post("/api/password-policy", {"min_length": "12", "upper": 1, "digit": 0, "symbol": True}).status_code == 200
+    )
     assert s.read_config()["auth_policy"] == {"min_length": 12, "upper": True, "digit": False, "symbol": True}
     assert s.post("/api/password-policy", {"min_length": "x"}).status_code == 400
     golden("log", [x for x in s.log() if not x.startswith("Connection ")])  # health checks run in the background
@@ -194,8 +224,13 @@ def test_connection_tests(lab: Lab, start: StartFn, golden) -> None:
 def test_health_and_connection_failures(lab: Lab, start: StartFn) -> None:
     s = start()
     h = wait_for(lambda: len(s.api("/api/health")) == 5 and s.api("/api/health"), what="health checks")
-    assert {k: v["ok"] for k, v in h.items()} == {"sonarr": True, "radarr": True, "qbittorrent": True, "jellyfin": True,
-                                                  "seerr": True}
+    assert {k: v["ok"] for k, v in h.items()} == {
+        "sonarr": True,
+        "radarr": True,
+        "qbittorrent": True,
+        "jellyfin": True,
+        "seerr": True,
+    }
     lab.seerr.stop()
     s.post("/api/connections", {})
     s.wait_log("Connection FAILED: can't reach Seerr")
@@ -222,14 +257,34 @@ def test_notifications(lab: Lab, start: StartFn) -> None:
     bad = s.post("/api/settings", {"notify": {"discord_url": "https://example.com/hook"}})
     assert bad.status_code == 400 and bad.text == "That doesn't look like a Discord webhook URL."
     assert s.post("/api/settings", {"notify": {"summary_time": "9am"}}).status_code == 400
-    ok = s.post("/api/settings", {"notify": {"ntfy_server": lab.ntfy.url, "ntfy_topic": " lab ", "ntfy_priority": 4,
-                                             "on_cleanup": 0, "junk": "x"}})
+    ok = s.post(
+        "/api/settings",
+        {
+            "notify": {
+                "ntfy_server": lab.ntfy.url,
+                "ntfy_topic": " lab ",
+                "ntfy_priority": 4,
+                "on_cleanup": 0,
+                "junk": "x",
+            }
+        },
+    )
     assert ok.status_code == 200
-    assert s.read_config()["notify"] == {"ntfy_server": lab.ntfy.url, "ntfy_topic": "lab", "ntfy_priority": "4", "on_cleanup": False}
+    assert s.read_config()["notify"] == {
+        "ntfy_server": lab.ntfy.url,
+        "ntfy_topic": "lab",
+        "ntfy_priority": "4",
+        "on_cleanup": False,
+    }
     r = s.post("/api/notify-test")
     assert r.status_code == 200 and r.text == "Sent to ntfy"
-    assert lab.ntfy.messages()[-1] == {"topic": "lab", "title": "Shredarr test", "message": "Notifications are working. 🗑️",
-                                       "tags": ["wastebasket"], "priority": 4}
+    assert lab.ntfy.messages()[-1] == {
+        "topic": "lab",
+        "title": "Shredarr test",
+        "message": "Notifications are working. 🗑️",
+        "tags": ["wastebasket"],
+        "priority": 4,
+    }
     st = s.api("/api/settings")["notify"]
     assert st["ntfy_topic"] == "lab" and st["on_cleanup"] is False and st["discord_username"] == "Shredarr"
 
@@ -241,6 +296,8 @@ def test_unconfigured(lab: Lab, start: StartFn, golden) -> None:
     st = s.api("/api/settings")
     assert st["missing"] == ["sonarr", "radarr", "qbittorrent", "jellyfin"]
     assert len(s.read_config()["webhook_token"]) == 64
-    golden("settings", {k: v for k, v in st.items() if k not in ("health", "update")})  # (no config: the update check is on)
+    golden(
+        "settings", {k: v for k, v in st.items() if k not in ("health", "update")}
+    )  # (no config: the update check is on)
     time.sleep(0.5)
     assert s.log() == ["Shredarr started"]

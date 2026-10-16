@@ -31,15 +31,22 @@ def test_rules_decide_when_a_torrent_goes(lab: Lab, start: StartFn, golden) -> N
     m_dl = lab.add_movie("Sprite Fright", 2021, ratio=5, seeding_days=50)
     assert m_dl.torrent and m_both.torrent and m_never.torrent and m_default.torrent and m_track.torrent
     m_dl.torrent.progress = 0.5
-    rules = [{"type": "category", "match": "tv-sonarr", "mode": "ratio", "min_seed_days": None, "min_ratio": 1.5},
-             {"type": "title", "match": "paper moons", "mode": "days", "min_seed_days": 3, "min_ratio": None},
-             {"type": "tracker", "match": "othersite.net", "mode": "both", "min_seed_days": 30, "min_ratio": 1}]
+    rules = [
+        {"type": "category", "match": "tv-sonarr", "mode": "ratio", "min_seed_days": None, "min_ratio": 1.5},
+        {"type": "title", "match": "paper moons", "mode": "days", "min_seed_days": 3, "min_ratio": None},
+        {"type": "tracker", "match": "othersite.net", "mode": "both", "min_seed_days": 30, "min_ratio": 1},
+    ]
     s = start(rule_list=rules)
     for m in (m_both, m_never, m_default, m_dl, m_track):
         lab.delete_movie_files(m)
     lab.delete_series_folder(show)  # the files are gone from the library, so only the rules hold the torrents back
     lab.delete_series_folder(other)
-    assert s.post("/api/rule", {"hash": m_both.torrent.hash, "mode": "both", "min_seed_days": 7, "min_ratio": 2}).status_code == 200
+    assert (
+        s.post(
+            "/api/rule", {"hash": m_both.torrent.hash, "mode": "both", "min_seed_days": 7, "min_ratio": 2}
+        ).status_code
+        == 200
+    )
     assert s.post("/api/rule", {"hash": m_never.torrent.hash, "mode": "never"}).status_code == 200
     queue(s, *lab.torrents)
     s.wait_log(f"^deleted torrent '{t_title.name}'")
@@ -82,8 +89,10 @@ def test_deletion_delay(lab: Lab, start: StartFn) -> None:
     s.webhook(lab.movie_event(m))
     assert m.torrent
     status = s.wait_status(m.torrent.hash, "^deletion delay")
-    assert status in ("deletion delay: deletes in 1h 59m (Undo still possible); seeded 60.0 of 14 days, ratio 9.00 of 2",
-                      "deletion delay: deletes in 2h 0m (Undo still possible); seeded 60.0 of 14 days, ratio 9.00 of 2")
+    assert status in (
+        "deletion delay: deletes in 1h 59m (Undo still possible); seeded 60.0 of 14 days, ratio 9.00 of 2",
+        "deletion delay: deletes in 2h 0m (Undo still possible); seeded 60.0 of 14 days, ratio 9.00 of 2",
+    )
     t = next(x for x in s.api("/api/torrents")["torrents"] if x["hash"] == m.torrent.hash)
     assert t["delete_after"] and t["undo"] == "ok"
     assert s.post("/api/grace", {"value": 0, "unit": "hours"}).status_code == 200
@@ -153,7 +162,9 @@ def test_cross_seed_sharing_files_waits_for_its_own_rule(lab: Lab, start: StartF
     golden("log", s.log())
 
 
-def test_cross_seed_together_with_the_original_keeps_shared_data_until_the_last(lab: Lab, start: StartFn, golden) -> None:
+def test_cross_seed_together_with_the_original_keeps_shared_data_until_the_last(
+    lab: Lab, start: StartFn, golden
+) -> None:
     m = lab.add_movie("Big Buck Bunny", 2008, ratio=3, seeding_days=30)
     assert m.torrent
     cs = lab.add_cross_seed(m.torrent, same_path=True, ratio=0.1, seeding_days=1)
@@ -164,13 +175,19 @@ def test_cross_seed_together_with_the_original_keeps_shared_data_until_the_last(
     assert not lab.torrents
     assert not os.path.exists(m.torrent.disk_path)
     history = s.api("/api/history")["rows"]
-    assert sorted((r["name"], r["tracker_original"]) for r in
-                  [{**r, "tracker_original": r["cross_seed_of"] or ""} for r in history]) == [
-        (m.torrent.name, ""), (cs.name, m.torrent.name)]
+    assert sorted(
+        (r["name"], r["tracker_original"])
+        for r in [{**r, "tracker_original": r["cross_seed_of"] or ""} for r in history]
+    ) == [(m.torrent.name, ""), (cs.name, m.torrent.name)]
     golden("log", s.log())
     assert sum(r["size"] for r in history) == 3010, "the shared data is counted once"
-    golden("history", sorted(([{k: r[k] for k in ("name", "title", "reason", "cross_seed_of", "saved_torrent")} for r in history]),
-                             key=lambda r: r["cross_seed_of"] or ""))
+    golden(
+        "history",
+        sorted(
+            ([{k: r[k] for k in ("name", "title", "reason", "cross_seed_of", "saved_torrent")} for r in history]),
+            key=lambda r: r["cross_seed_of"] or "",
+        ),
+    )
 
 
 def test_low_disk_space_deletes_early(lab: Lab, start: StartFn, golden) -> None:
@@ -206,7 +223,12 @@ def test_path_mappings(lab: Lab, start: StartFn) -> None:
     lab.delete_series_folder(show)
     s.webhook(lab.series_event(show))
     s.wait_log(f"^deleted torrent '{pack.name}'")
-    assert s.post("/api/path-maps", {"maps": [{"remote": " /x ", "local": "/y"}, {"remote": "", "local": "/z"}]}).status_code == 200
+    assert (
+        s.post(
+            "/api/path-maps", {"maps": [{"remote": " /x ", "local": "/y"}, {"remote": "", "local": "/z"}]}
+        ).status_code
+        == 200
+    )
     assert s.read_config()["path_maps"] == [{"remote": "/x/", "local": "/y/"}]
 
 
@@ -220,7 +242,9 @@ def test_transmission(lab: Lab, start: StartFn, golden) -> None:
     s.wait_log("^deleted torrent")
     assert m.torrent and m.torrent.hash not in lab.torrents and keep.torrent and keep.torrent.hash in lab.torrents
     assert not os.path.exists(m.torrent.disk_path)
-    assert [x["saved_torrent"] for x in s.api("/api/history")["rows"]] == [False]  # Transmission can't export .torrent files
+    assert [x["saved_torrent"] for x in s.api("/api/history")["rows"]] == [
+        False
+    ]  # Transmission can't export .torrent files
 
 
 def test_deluge(lab: Lab, start: StartFn, golden) -> None:

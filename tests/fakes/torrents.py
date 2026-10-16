@@ -105,6 +105,7 @@ class FakeQBittorrent(TorrentFake):
             if not sid or sid.group(1) not in self.sessions:
                 return Response(403, "Forbidden")
             return fn(r)
+
         return wrapped
 
     def login(self, r: Request) -> Response:
@@ -120,11 +121,28 @@ class FakeQBittorrent(TorrentFake):
 
     def info(self, r: Request) -> list[dict[str, Any]]:
         want = {h.lower() for h in self.params(r).get("hashes", "").split("|") if h}
-        return [{"hash": t.hash, "name": t.name, "save_path": t.save_path, "content_path": t.content_path, "size": t.size,
-                 "total_size": t.size, "progress": t.progress, "ratio": t.ratio, "seeding_time": t.seeding_time, "state": t.state,
-                 "upspeed": t.upspeed, "dlspeed": t.dlspeed, "added_on": t.added_on, "category": t.category, "tracker": t.tracker,
-                 "tags": ""}
-                for t in self.lab.torrents.values() if not want or t.hash in want]
+        return [
+            {
+                "hash": t.hash,
+                "name": t.name,
+                "save_path": t.save_path,
+                "content_path": t.content_path,
+                "size": t.size,
+                "total_size": t.size,
+                "progress": t.progress,
+                "ratio": t.ratio,
+                "seeding_time": t.seeding_time,
+                "state": t.state,
+                "upspeed": t.upspeed,
+                "dlspeed": t.dlspeed,
+                "added_on": t.added_on,
+                "category": t.category,
+                "tracker": t.tracker,
+                "tags": "",
+            }
+            for t in self.lab.torrents.values()
+            if not want or t.hash in want
+        ]
 
     def export(self, r: Request) -> Response:
         t = self.lab.torrents.get(self.params(r).get("hash", "").lower())
@@ -155,11 +173,26 @@ class FakeTransmission(TorrentFake):
         self.route("POST", "/transmission/rpc", self.rpc)
 
     def fields(self, t: Torrent, tid: int) -> dict[str, Any]:
-        return {"id": tid, "hashString": t.hash, "name": t.name, "downloadDir": t.save_path, "sizeWhenDone": t.size,
-                "totalSize": t.size, "percentDone": t.progress, "uploadRatio": t.ratio, "secondsSeeding": t.seeding_time,
-                "status": TR_STATUS[t.state], "error": 0, "errorString": "", "rateUpload": t.upspeed, "rateDownload": t.dlspeed,
-                "addedDate": t.added_on, "labels": [t.category] if t.category else [],
-                "trackers": [{"announce": t.tracker, "id": 0, "tier": 0}], "torrentFile": f"/config/torrents/{t.hash}.torrent"}
+        return {
+            "id": tid,
+            "hashString": t.hash,
+            "name": t.name,
+            "downloadDir": t.save_path,
+            "sizeWhenDone": t.size,
+            "totalSize": t.size,
+            "percentDone": t.progress,
+            "uploadRatio": t.ratio,
+            "secondsSeeding": t.seeding_time,
+            "status": TR_STATUS[t.state],
+            "error": 0,
+            "errorString": "",
+            "rateUpload": t.upspeed,
+            "rateDownload": t.dlspeed,
+            "addedDate": t.added_on,
+            "labels": [t.category] if t.category else [],
+            "trackers": [{"announce": t.tracker, "id": 0, "tier": 0}],
+            "torrentFile": f"/config/torrents/{t.hash}.torrent",
+        }
 
     def rpc(self, r: Request) -> Response:
         if self.username or self.password:
@@ -172,23 +205,40 @@ class FakeTransmission(TorrentFake):
         method, args = body.get("method"), body.get("arguments") or {}
         ids = list(self.lab.torrents)
         if method == "session-get":
-            out: dict[str, Any] = {"version": "4.0.6 (38c164933e)", "rpc-version": 18, "rpc-version-minimum": 14,
-                                   "rpc-version-semver": "5.4.0", "download-dir": self.lab.downloads}
+            out: dict[str, Any] = {
+                "version": "4.0.6 (38c164933e)",
+                "rpc-version": 18,
+                "rpc-version-minimum": 14,
+                "rpc-version-semver": "5.4.0",
+                "download-dir": self.lab.downloads,
+            }
         elif method == "torrent-get":
             sel = args.get("ids")
-            ts = [(i + 1, self.lab.torrents[h]) for i, h in enumerate(ids)
-                  if sel is None or h in [str(x).lower() for x in sel] or (i + 1) in sel]
+            ts = [
+                (i + 1, self.lab.torrents[h])
+                for i, h in enumerate(ids)
+                if sel is None or h in [str(x).lower() for x in sel] or (i + 1) in sel
+            ]
             fields = args.get("fields")
-            out = {"torrents": [{k: v for k, v in self.fields(t, i).items() if not fields or k in fields or k == "id"} for i, t in ts]}
+            out = {
+                "torrents": [
+                    {k: v for k, v in self.fields(t, i).items() if not fields or k in fields or k == "id"}
+                    for i, t in ts
+                ]
+            }
         elif method == "torrent-remove":
-            hashes = [h for i, h in enumerate(ids) if h in [str(x).lower() for x in args["ids"]] or (i + 1) in args["ids"]]
+            hashes = [
+                h for i, h in enumerate(ids) if h in [str(x).lower() for x in args["ids"]] or (i + 1) in args["ids"]
+            ]
             self.remove(hashes, bool(args.get("delete-local-data")))
             out = {}
         elif method == "torrent-add":
             t = self.readd(base64.b64decode(args["metainfo"]), (args.get("labels") or [""])[0])
             out = {"torrent-added": {"id": len(self.lab.torrents), "name": t.name, "hashString": t.hash}} if t else {}
         else:
-            return Response(200, {"result": f"method name not recognized: {method}", "arguments": {}, "tag": body.get("tag")})
+            return Response(
+                200, {"result": f"method name not recognized: {method}", "arguments": {}, "tag": body.get("tag")}
+            )
         return Response(200, {"result": "success", "arguments": out, "tag": body.get("tag")})
 
 
@@ -208,10 +258,21 @@ class FakeDeluge(TorrentFake):
         self.route("POST", "/json", self.rpc)
 
     def status(self, t: Torrent) -> dict[str, Any]:
-        return {"name": t.name, "save_path": t.save_path, "download_location": t.save_path, "total_wanted": t.size,
-                "progress": t.progress * 100, "ratio": t.ratio, "seeding_time": t.seeding_time, "state": DELUGE_STATE[t.state],
-                "upload_payload_rate": t.upspeed, "download_payload_rate": t.dlspeed, "time_added": float(t.added_on),
-                "label": self.torrent_labels.get(t.hash, t.category), "trackers": [{"url": t.tracker, "tier": 0}]}
+        return {
+            "name": t.name,
+            "save_path": t.save_path,
+            "download_location": t.save_path,
+            "total_wanted": t.size,
+            "progress": t.progress * 100,
+            "ratio": t.ratio,
+            "seeding_time": t.seeding_time,
+            "state": DELUGE_STATE[t.state],
+            "upload_payload_rate": t.upspeed,
+            "download_payload_rate": t.dlspeed,
+            "time_added": float(t.added_on),
+            "label": self.torrent_labels.get(t.hash, t.category),
+            "trackers": [{"url": t.tracker, "tier": 0}],
+        }
 
     def rpc(self, r: Request) -> Response:
         body = r.json()

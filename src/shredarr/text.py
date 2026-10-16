@@ -46,11 +46,12 @@ def rule_text(r: Rule) -> str:
     if r.get("mode") == "never":
         return "never delete"
     days, ratio = r.get("min_seed_days"), r.get("min_ratio")
-    p = ([f"{days:g} days"] if r["mode"] != "ratio" and days is not None else []) + \
-        ([f"ratio {ratio:g}"] if r["mode"] != "days" and ratio is not None else [])
+    p = ([f"{days:g} days"] if r["mode"] != "ratio" and days is not None else []) + (
+        [f"ratio {ratio:g}"] if r["mode"] != "days" and ratio is not None else []
+    )
     return (" and " if r["mode"] == "both" else " or ").join(p) or "no rule"
 
 
 def tail(path: str) -> str:
-    """Last two path parts (folder/file). Matches the same file in Jellyfin and here even when mounted at different paths."""
+    """Last two path parts (folder/file): the same file in Jellyfin and here, even when mounted at different paths."""
     return "/".join(path.replace("\\", "/").rstrip("/").split("/")[-2:])

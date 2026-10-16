@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
@@ -14,6 +15,11 @@ from .responses import as_json, ok_or_home, text
 
 router = APIRouter()
 HASH = re.compile(r"[0-9a-f]{40}")
+
+
+def run_each(fn: Callable[[str], None], items: list[str]) -> None:
+    for x in items:
+        fn(x)
 
 
 def hashes_of(body: JsonBody) -> list[str]:
@@ -29,19 +35,25 @@ def torrents(core: Core) -> Response:
 
 
 @router.get("/api/plan")
-def delete_plan(core: Core, hash: str = "") -> Response:  # noqa: A002 (the UI's parameter name)
+def delete_plan(core: Core, hash: str = "") -> Response:
     try:
         plan = core.delete_now.plan(core.config.load(), hash)
     except Exception as e:  # shown in the confirm dialog
         return text(f"could not build the plan: {e}", 502)
-    return as_json({"name": plan.torrent["name"] if plan.torrent else hash, "steps": [s.desc for s in plan.steps],
-                    "notes": [s.desc for s in plan.steps if s.note], "dry_run": core.config.load().dry_run})
+    return as_json(
+        {
+            "name": plan.torrent["name"] if plan.torrent else hash,
+            "steps": [s.desc for s in plan.steps],
+            "notes": [s.desc for s in plan.steps if s.note],
+            "dry_run": core.config.load().dry_run,
+        }
+    )
 
 
 @router.post("/api/delete-now")
 def delete_now(core: Core, body: JsonBody) -> Response:
     hashes = hashes_of(body)
-    spawn(lambda: [core.delete_now.run(h) for h in hashes])
+    spawn(run_each, core.delete_now.run, hashes)
     return text("started", 202)
 
 
@@ -70,24 +82,30 @@ def delete_orphans(core: Core, body: JsonBody) -> Response:
 
 
 @router.get("/api/undo-plan")
-def undo_plan(core: Core, hash: str = "") -> Response:  # noqa: A002
+def undo_plan(core: Core, hash: str = "") -> Response:
     try:
         t, rows, problem = core.undo.info(hash)
     except Exception as e:  # shown in the confirm dialog
         return text(f"could not check: {e}", 502)
-    return as_json({"name": rows[0][1] if rows else hash, "problem": problem, "count": len(rows),
-                    "steps": core.undo.steps(t, rows) if t and not problem else []})
+    return as_json(
+        {
+            "name": rows[0][1] if rows else hash,
+            "problem": problem,
+            "count": len(rows),
+            "steps": core.undo.steps(t, rows) if t and not problem else [],
+        }
+    )
 
 
 @router.post("/api/undo")
 def undo(core: Core, body: JsonBody) -> Response:
     hashes = hashes_of(body)
-    spawn(lambda: [core.undo.run(h) for h in hashes])
+    spawn(run_each, core.undo.run, hashes)
     return text("started", 202)
 
 
 @router.get("/api/redownload-plan")
-def redownload_plan(core: Core, id: str = "0") -> Response:  # noqa: A002
+def redownload_plan(core: Core, id: str = "0") -> Response:
     try:
         return as_json(core.redownloader.plan(int(id)))
     except Exception as e:  # shown in the dialog
@@ -120,7 +138,7 @@ def activity(core: Core) -> Response:
 def queue_leftovers(core: Core, body: JsonBody) -> Response:
     """Leftovers (torrents whose media is gone, but which were never queued) go on the cleanup list."""
     hashes = [h for h in body.get("hashes", []) if HASH.fullmatch(h)]
-    ts = {t["hash"]: t for t in core.connections.torrents.list()}
+    ts = {t["hash"]: t for t in core.connections.torrents.all()}
     for h in hashes:
         if h in ts:
             core.queue.add([h], core.library.title_of(h) or ts[h]["name"], "leftover")
@@ -133,7 +151,7 @@ def queue_leftovers(core: Core, body: JsonBody) -> Response:
 def torrent_rule(core: Core, body: JsonBody) -> Response:
     hashes = hashes_of(body)
     if len(hashes) == 1:
-        name = next((t["name"] for t in core.connections.torrents.list(hashes[0])), hashes[0])
+        name = next((t["name"] for t in core.connections.torrents.all(hashes[0])), hashes[0])
         label = f"'{name}'"
     else:
         label = f"{len(hashes)} torrents"
@@ -142,8 +160,14 @@ def torrent_rule(core: Core, body: JsonBody) -> Response:
 
 
 @router.post("/rules")
-def default_rule(core: Core, request: Request, mode: Annotated[str, Form()] = "either", min_seed_days: Annotated[str, Form()] = "",
-                 min_ratio: Annotated[str, Form()] = "", dry_run: Annotated[str | None, Form()] = None) -> Response:
+def default_rule(
+    core: Core,
+    request: Request,
+    mode: Annotated[str, Form()] = "either",
+    min_seed_days: Annotated[str, Form()] = "",
+    min_ratio: Annotated[str, Form()] = "",
+    dry_run: Annotated[str | None, Form()] = None,
+) -> Response:
     form = {"mode": mode, "min_seed_days": min_seed_days, "min_ratio": min_ratio}
     if dry_run is not None:
         form["dry_run"] = dry_run

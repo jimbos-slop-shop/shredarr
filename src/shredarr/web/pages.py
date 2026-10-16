@@ -9,7 +9,13 @@ import os
 from ..app import Shredarr
 from ..config import MODES
 
-CONTENT_TYPES = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".html": "text/html"}
+CONTENT_TYPES = {
+    ".css": "text/css",
+    ".js": "text/javascript",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".html": "text/html",
+}
 ALIASES = {"/logo.svg": "logo.svg", "/logo.png": "logo.png", "/favicon.ico": "logo.png"}
 
 SETUP_BODY = """%ERR%<p class=small style="text-align:center;margin-bottom:14px">Welcome! Choose a password to protect Shredarr.
@@ -31,7 +37,7 @@ RESET_BODY = """%ERR%<form method=post action=/reset/code><button class=ghost>Se
 
 def static_file(static_dir: str, path: str) -> tuple[bytes, str] | None:
     """(content, content type) of a file the browser may load without signing in, or None."""
-    name = ALIASES.get(path) or (path[len("/static/"):] if path.startswith("/static/") else None)
+    name = ALIASES.get(path) or (path[len("/static/") :] if path.startswith("/static/") else None)
     if not name or "/" in name or name == "index.html" or not os.path.isfile(os.path.join(static_dir, name)):
         return None
     with open(os.path.join(static_dir, name), "rb") as f:
@@ -50,14 +56,25 @@ def main_page(core: Shredarr) -> str:
 
     def fmt(v: float | None) -> str:
         return "" if v is None else f"{v:g}"
+
     dry = c.dry_run
-    sub = {"%BANNERHIDDEN%": "" if dry else "hidden", "%MODECLS%": "dry" if dry else "live", "%MODETXT%": "Dry run" if dry else "Live",
-           "%DAYS%": fmt(r["min_seed_days"]), "%RATIO%": fmt(r["min_ratio"]),
-           "%MODEOPTS%": "".join(f"<option value='{k}'{' selected' if k == r['mode'] else ''}>{htmlmod.escape(v)}</option>"
-                                 for k, v in MODES.items()),
-           "%DRYCHK%": "checked" if dry else "", "%MODESJSON%": json.dumps(MODES), "%VERSION%": core.version,
-           "%MEDIA%": c.media_name, "%CLIENT%": c.client_name,
-           "%ASSETV%": f"{core.version}.{int(max(os.path.getmtime(os.path.join(static, f)) for f in os.listdir(static)))}"}
+    sub = {
+        "%BANNERHIDDEN%": "" if dry else "hidden",
+        "%MODECLS%": "dry" if dry else "live",
+        "%MODETXT%": "Dry run" if dry else "Live",
+        "%DAYS%": fmt(r["min_seed_days"]),
+        "%RATIO%": fmt(r["min_ratio"]),
+        "%MODEOPTS%": "".join(
+            f"<option value='{k}'{' selected' if k == r['mode'] else ''}>{htmlmod.escape(v)}</option>"
+            for k, v in MODES.items()
+        ),
+        "%DRYCHK%": "checked" if dry else "",
+        "%MODESJSON%": json.dumps(MODES),
+        "%VERSION%": core.version,
+        "%MEDIA%": c.media_name,
+        "%CLIENT%": c.client_name,
+        "%ASSETV%": f"{core.version}.{int(max(os.path.getmtime(os.path.join(static, f)) for f in os.listdir(static)))}",
+    }
     out = read(static, "index.html")
     for k, v in sub.items():
         out = out.replace(k, v)
@@ -66,7 +83,11 @@ def main_page(core: Shredarr) -> str:
 
 def sign_in_page(core: Shredarr, subtitle: str, body: str, note: str = "", ok: bool = False) -> str:
     message = f"<div class={'ok' if ok else 'err'}>{htmlmod.escape(note)}</div>" if note else ""
-    return read(core.settings.static_dir, "login.html").replace("%SUB%", subtitle).replace("%BODY%", body.replace("%ERR%", message))
+    return (
+        read(core.settings.static_dir, "login.html")
+        .replace("%SUB%", subtitle)
+        .replace("%BODY%", body.replace("%ERR%", message))
+    )
 
 
 def setup_page(core: Shredarr, err: str = "") -> str:

@@ -30,16 +30,32 @@ def _errors() -> Iterator[None]:
 class QBittorrentClient:
     def __init__(self, conf: JSON, local: Callable[[str], str] | None = None) -> None:
         self.api = qbittorrentapi.Client(
-            host=conf["url"].rstrip("/"), username=conf.get("username", ""), password=conf.get("password", ""),
-            REQUESTS_ARGS={"timeout": TIMEOUT}, RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=False,
-            DISABLE_LOGGING_DEBUG_OUTPUT=True)
+            host=conf["url"].rstrip("/"),
+            username=conf.get("username", ""),
+            password=conf.get("password", ""),
+            REQUESTS_ARGS={"timeout": TIMEOUT},
+            RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=False,
+            DISABLE_LOGGING_DEBUG_OUTPUT=True,
+        )
 
     @staticmethod
     def _torrent(t: Any) -> Torrent:
-        return {"hash": t["hash"].lower(), "name": t["name"], "save_path": t["save_path"], "content_path": t["content_path"],
-                "size": t["size"], "progress": t["progress"], "ratio": t["ratio"], "seeding_time": t["seeding_time"],
-                "state": t["state"], "upspeed": t["upspeed"], "dlspeed": t["dlspeed"], "added_on": t["added_on"],
-                "category": t["category"], "tracker": t["tracker"]}
+        return {
+            "hash": t["hash"].lower(),
+            "name": t["name"],
+            "save_path": t["save_path"],
+            "content_path": t["content_path"],
+            "size": t["size"],
+            "progress": t["progress"],
+            "ratio": t["ratio"],
+            "seeding_time": t["seeding_time"],
+            "state": t["state"],
+            "upspeed": t["upspeed"],
+            "dlspeed": t["dlspeed"],
+            "added_on": t["added_on"],
+            "category": t["category"],
+            "tracker": t["tracker"],
+        }
 
     def torrents(self, hashes: list[str] | None = None) -> list[Torrent]:
         with _errors():

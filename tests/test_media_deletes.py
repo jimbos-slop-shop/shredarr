@@ -22,7 +22,8 @@ def test_movie_delete_cleans_up_everywhere_then_the_torrent(lab: Lab, start: Sta
 
     delete = lab.radarr.requests("DELETE", r"/api/v3/movie/\d+")
     assert [(r.path, r.query) for r in delete] == [
-        (f"/api/v3/movie/{movie_id}", {"deleteFiles": "true", "addImportExclusion": "true"})]
+        (f"/api/v3/movie/{movie_id}", {"deleteFiles": "true", "addImportExclusion": "true"})
+    ]
     assert [e["tmdbId"] for e in lab.radarr.exclusions] == [m.tmdb]
     assert len(lab.seerr.requests("DELETE")) == 1
     form = lab.qbittorrent.requests("POST", "/api/v2/torrents/delete")[-1].form()
@@ -32,7 +33,8 @@ def test_movie_delete_cleans_up_everywhere_then_the_torrent(lab: Lab, start: Sta
 
     history = s.api("/api/history")
     assert [(r["name"], r["title"], r["reason"]) for r in history["rows"]] == [
-        (m.torrent.name, "Big Buck Bunny", "seeding rule met")]
+        (m.torrent.name, "Big Buck Bunny", "seeding rule met")
+    ]
     assert history["rows"][0]["size"] == 3010  # video + .nfo of the download; the library link was already gone
     assert history["rows"][0]["saved_torrent"] is True
     golden("log", s.log())
@@ -81,7 +83,8 @@ def test_series_delete_removes_the_show(lab: Lab, start: StartFn, golden) -> Non
     s.wait_log(f"^deleted torrent '{s1.name}'")
     s.wait_status(s2.hash, "^seeding")
     assert [(r.path, r.query) for r in lab.sonarr.requests("DELETE")] == [
-        (f"/api/v3/series/{sid}", {"deleteFiles": "true", "addImportListExclusion": "true"})]
+        (f"/api/v3/series/{sid}", {"deleteFiles": "true", "addImportListExclusion": "true"})
+    ]
     assert [e["tvdbId"] for e in lab.sonarr.exclusions] == [show.tvdb]
     assert len(lab.seerr.requests("DELETE")) == 1
     p = s.pending()[s2.hash]
@@ -141,13 +144,19 @@ def test_episode_delete_from_season_pack_waits_for_the_rest(lab: Lab, start: Sta
     status = s.wait_status(pack.hash, "^waiting")
     assert status.startswith("waiting: 5 file(s) still in library")
     assert [r.json() for r in lab.sonarr.requests("PUT", "/api/v3/episode/monitor")] == [
-        {"episodeIds": [show.episode(1, 5)["id"]], "monitored": False}]
+        {"episodeIds": [show.episode(1, 5)["id"]], "monitored": False}
+    ]
     assert len(lab.sonarr.requests("DELETE", "/api/v3/episodefile/bulk")) == 1
     assert show.record["seasons"][0]["monitored"] is True
     p = s.pending()[pack.hash]
     assert p["source"] == "episode" and p["undo"] == {
-        "kind": "episodes", "app": "sonarr", "series_id": show.id, "title": "Paper Moons",
-        "remonitor": [show.episode(1, 5)["id"]], "seasons": []}
+        "kind": "episodes",
+        "app": "sonarr",
+        "series_id": show.id,
+        "title": "Paper Moons",
+        "remonitor": [show.episode(1, 5)["id"]],
+        "seasons": [],
+    }
     golden("log", s.log())
 
     # a second episode of the same pack: its undo info is merged
@@ -168,7 +177,8 @@ def test_multi_episode_file(lab: Lab, start: StartFn) -> None:
     s.webhook(ev)
     s.wait_log("removed 2 episode file record")
     assert lab.sonarr.requests("PUT", "/api/v3/episode/monitor")[0].json()["episodeIds"] == sorted(
-        show.episode(1, n)["id"] for n in (1, 2))
+        show.episode(1, n)["id"] for n in (1, 2)
+    )
     assert len(s.pending()) == 2
 
 
@@ -180,7 +190,8 @@ def test_flat_show_season_only_unmonitors_aired_episodes(lab: Lab, start: StartF
     s.webhook(lab.season_event(show, 6))
     s.wait_log("removed 3 episode file record")
     assert lab.sonarr.requests("PUT", "/api/v3/episode/monitor")[0].json()["episodeIds"] == sorted(
-        show.episode(6, n)["id"] for n in (1, 2, 3))
+        show.episode(6, n)["id"] for n in (1, 2, 3)
+    )
     assert not lab.sonarr.requests("PUT", r"/api/v3/series/\d+")
     assert show.record["seasons"][0]["monitored"] is True
     golden("log", s.log())
@@ -225,8 +236,14 @@ def test_cleanup_behavior_switches(lab: Lab, start: StartFn) -> None:
     m = lab.add_movie("Big Buck Bunny", 2008)
     show = lab.add_series("Paper Moons", seasons={1: 2})
     lab.add_release(show, 1, [1])
-    s = start(behavior={"import_exclusion": False, "remove_from_seerr": False, "unmonitor": False,
-                        "remove_episode_files": False})
+    s = start(
+        behavior={
+            "import_exclusion": False,
+            "remove_from_seerr": False,
+            "unmonitor": False,
+            "remove_episode_files": False,
+        }
+    )
     lab.delete_movie_files(m)
     lab.delete_episode_files(show, 1, [1])
     s.webhook(lab.movie_event(m))

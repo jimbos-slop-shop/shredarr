@@ -6,7 +6,17 @@ from __future__ import annotations
 from ..config import JSON
 
 MOVIE_KEYS = ("tmdbId", "title", "year", "qualityProfileId", "path", "monitored", "minimumAvailability", "tags")
-SERIES_KEYS = ("tvdbId", "title", "qualityProfileId", "path", "seasonFolder", "seriesType", "monitored", "monitorNewItems", "tags")
+SERIES_KEYS = (
+    "tvdbId",
+    "title",
+    "qualityProfileId",
+    "path",
+    "seasonFolder",
+    "seriesType",
+    "monitored",
+    "monitorNewItems",
+    "tags",
+)
 
 
 def movie_settings(m: JSON) -> JSON:

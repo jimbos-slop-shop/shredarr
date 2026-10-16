@@ -66,13 +66,13 @@ class PathMapper:
     def local(self, p: str | None) -> str:
         for m in self.maps:
             if p and m.get("remote") and p.startswith(m["remote"]):
-                return str(m["local"]) + p[len(m["remote"]):]
+                return str(m["local"]) + p[len(m["remote"]) :]
         return p or ""
 
     def remote(self, p: str) -> str:
         for m in self.maps:
             if p and m.get("local") and p.startswith(m["local"]):
-                return str(m["remote"]) + p[len(m["local"]):]
+                return str(m["remote"]) + p[len(m["local"]) :]
         return p
 
     def on_disk(self, p: str | None) -> bool:

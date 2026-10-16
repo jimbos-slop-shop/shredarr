@@ -50,11 +50,13 @@ ignore = [
     "PLR0913", # too many arguments
     "PLR0915", # too many statements
     "PLR2004", # magic values: HTTP status codes and thresholds read better inline
+    "PLR0917", # services take their dependencies in the constructor (wired up in one place: app.py)
     "PTH",     # os.path is used deliberately: paths come from other apps as plain strings
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/legacy/*" = ["ALL"]
+"src/shredarr/web/pages.py" = ["E501"]  # HTML
 
 [tool.mypy]
 python_version = "3.13"
@@ -63,8 +65,12 @@ warn_unreachable = true
 exclude = ["tests/legacy/"]
 
 [[tool.mypy.overrides]]
-module = ["plexapi.*", "deluge_web_client.*", "transmission_rpc.*"]
+module = ["plexapi.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["shredarr.clients.plex"]
+disallow_untyped_calls = false  # plexapi has no type hints
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

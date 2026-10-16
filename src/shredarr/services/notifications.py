@@ -14,7 +14,13 @@ from ..config import JSON, ConfigStore
 
 log = logging.getLogger(__name__)
 
-SWITCHES = {"cleanup": "on_cleanup", "failure": "on_failure", "jellyfin": "on_jellyfin", "undo": "on_undo", "summary": "daily_summary"}
+SWITCHES = {
+    "cleanup": "on_cleanup",
+    "failure": "on_failure",
+    "jellyfin": "on_jellyfin",
+    "undo": "on_undo",
+    "summary": "daily_summary",
+}
 PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
 HEADERS = {"User-Agent": "Shredarr"}
 
@@ -43,6 +49,7 @@ class Notifier:
         tried: list[str] = []
         errs: list[str] = []
         with httpx.Client(timeout=TIMEOUT, headers=HEADERS) as http:
+
             def attempt(name: str, request: httpx.Request) -> None:
                 tried.append(name)
                 try:
@@ -61,12 +68,29 @@ class Notifier:
                 attempt("Discord", http.build_request("POST", n["discord_url"], json=payload))
             if n["ntfy_topic"]:
                 headers = {"Authorization": "Bearer " + n["ntfy_token"]} if n["ntfy_token"] else {}
-                attempt("ntfy", http.build_request("POST", (n["ntfy_server"] or "https://ntfy.sh").rstrip("/"), headers=headers, json={
-                    "topic": n["ntfy_topic"], "title": title, "message": msg, "tags": ["wastebasket"],
-                    "priority": int(n["ntfy_priority"] or 3)}))
+                attempt(
+                    "ntfy",
+                    http.build_request(
+                        "POST",
+                        (n["ntfy_server"] or "https://ntfy.sh").rstrip("/"),
+                        headers=headers,
+                        json={
+                            "topic": n["ntfy_topic"],
+                            "title": title,
+                            "message": msg,
+                            "tags": ["wastebasket"],
+                            "priority": int(n["ntfy_priority"] or 3),
+                        },
+                    ),
+                )
             if n["pushover_user"] and n["pushover_token"]:
-                form = {"token": n["pushover_token"], "user": n["pushover_user"], "title": title, "message": msg[:1024],
-                        "priority": n["pushover_priority"] or "0"}
+                form = {
+                    "token": n["pushover_token"],
+                    "user": n["pushover_user"],
+                    "title": title,
+                    "message": msg[:1024],
+                    "priority": n["pushover_priority"] or "0",
+                }
                 if n["pushover_sound"]:
                     form["sound"] = n["pushover_sound"]
                 if form["priority"] == "2":  # emergency priority requires retry/expire

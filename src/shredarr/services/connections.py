@@ -43,8 +43,10 @@ class Connections:
 
     # ------------------------------------------------------------------ Sonarr / Radarr
     def arr_client(self, inst: ArrInstance) -> SonarrClient | RadarrClient:
-        cls = SonarrClient if inst.kind == "sonarr" else RadarrClient
-        return self._client(cls, inst.conf["url"], inst.conf.get("api_key", ""))
+        url, key = inst.conf["url"], inst.conf.get("api_key", "")
+        if inst.kind == "sonarr":
+            return self._client(SonarrClient, url, key)
+        return self._client(RadarrClient, url, key)
 
     def arrs(self, kind: str | None = None) -> list[tuple[ArrInstance, SonarrClient | RadarrClient]]:
         return [(x, self.arr_client(x)) for x in self.config.load().arr_instances(kind)]
@@ -104,7 +106,9 @@ class TorrentService:
                 try:
                     if self._client is None:
                         c = self.connections.config.load()
-                        self._client = make_client(c.client_kind, c.service(c.client_kind), self.connections.paths().local)
+                        self._client = make_client(
+                            c.client_kind, c.service(c.client_kind), self.connections.paths().local
+                        )
                     return fn(self._client)
                 except ServiceError as e:
                     self._client = None
@@ -113,7 +117,7 @@ class TorrentService:
                         raise
         raise AssertionError("unreachable")
 
-    def list(self, hashes: list[str] | str | None = None) -> list[Torrent]:
+    def all(self, hashes: list[str] | str | None = None) -> list[Torrent]:
         """All torrents (or the given hashes), with paths as Shredarr sees them."""
         if isinstance(hashes, str):
             hashes = [hashes]
@@ -124,7 +128,7 @@ class TorrentService:
         return ts
 
     def get(self, h: str) -> Torrent | None:
-        return next(iter(self.list(h)), None)
+        return next(iter(self.all(h)), None)
 
     def remove(self, hashes: list[str], with_data: bool) -> None:
         self._call(lambda c: c.remove(hashes, with_data))
