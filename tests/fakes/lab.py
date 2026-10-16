@@ -29,9 +29,10 @@ def stable_int(text: str, digits: int = 6) -> int:
 
 
 def write(path: str, size: int) -> str:
+    """A file of this size that takes no disk space (sparse), so the lab can hold "20 GB" season packs."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
-        f.write(b"\0" * size)
+        f.truncate(size)
     return path
 
 

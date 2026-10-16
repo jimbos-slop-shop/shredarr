@@ -41,6 +41,7 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 120
 target-version = "py313"
+extend-exclude = ["tests/legacy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "PTH"]
