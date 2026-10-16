@@ -1,0 +1,17 @@
+{
+  "app": "radarr",
+  "same_available": false,
+  "steps": {
+    "same": [
+      "Put 'Big Buck Bunny' (2008) back in Radarr (with its previous settings if Shredarr has them) and monitor it",
+      "Add the original torrent back to qBittorrent (Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB), so the same release downloads again",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ],
+    "search": [
+      "Put 'Big Buck Bunny' (2008) back in Radarr (with its previous settings if Shredarr has them) and monitor it",
+      "Have Radarr search for it and grab the best release it finds",
+      "When it finishes, it's imported into your library and shows up in Jellyfin"
+    ]
+  },
+  "what": "'Big Buck Bunny' (2008)"
+}

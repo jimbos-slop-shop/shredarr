@@ -1,0 +1,10 @@
+{
+  "auth": {
+    "salt": "9de156a608acf39aed00f78e171037f3",
+    "hash": "981037585401a4921da0f15760d19a793fb9b9f29d3fcfadfc5ea7e68faf4755"
+  },
+  "password": "fixture password",
+  "session": "OOEL0EsvYOo_StOkemrlskynRL1TfFx8K80XJ8kAu7Y",
+  "waiting": "c9276e4a30abb060989eb4ae9af40dc1b2488384",
+  "cleaned": "d21118f6136bb24fac37beca66dc2358cbdf1d14"
+}
