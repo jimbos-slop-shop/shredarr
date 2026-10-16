@@ -127,7 +127,7 @@ class Orphans:
                     done.append(
                         (
                             m["title"],
-                            f.get("size") or 0 if nlink(p) <= 1 else 0,
+                            (f.get("size") or 0) if nlink(p) <= 1 else 0,  # a file with other links frees nothing
                             {"app": app, "movie": movie_settings(m), "episodes": []},
                         )
                     )

@@ -131,7 +131,6 @@ def test_config_defaults_and_old_settings() -> None:
     assert Config({}).default_rule == {"mode": "either", "min_seed_days": 14, "min_ratio": 2}
 
 
-@pytest.mark.xfail(strict=True, reason="1.x bug: .part10.rar and up count as first volumes (fixed in a later commit)")
 def test_files() -> None:
     assert first_rar_volumes(["a.rar", "a.r00", "b.part1.rar", "b.part2.rar", "b.part10.rar", "c.part01.rar"]) == [
         "a.rar",

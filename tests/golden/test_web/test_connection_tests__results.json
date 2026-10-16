@@ -32,7 +32,7 @@
     "ok": true
   },
   "qbittorrent-bad": {
-    "msg": "HTTP 403: check the API key",
+    "msg": "wrong username or password",
     "ok": false
   },
   "radarr-4k": {

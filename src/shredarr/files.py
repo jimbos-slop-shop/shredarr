@@ -53,7 +53,9 @@ def nlink(path: str) -> int:
 
 def first_rar_volumes(paths: Iterable[str]) -> list[str]:
     """The first volume of each RAR set (name.rar or name.part1.rar), which unpacking starts from."""
-    return [f for f in paths if re.search(r"\.rar$", f, re.I) and not re.search(r"\.part0*[2-9]\d*\.rar$", f, re.I)]
+    return [
+        f for f in paths if re.search(r"\.rar$", f, re.I) and not re.search(r"\.part(?!0*1\.rar$)\d+\.rar$", f, re.I)
+    ]
 
 
 class PathMapper:

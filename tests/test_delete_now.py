@@ -121,3 +121,13 @@ def test_no_torrent_tab(lab: Lab, start: StartFn, golden) -> None:
     golden("history", [{k: r[k] for k in ("name", "title", "reason", "size", "saved_torrent")} for r in rows])
     golden("log", s.log())
     assert s.api("/api/orphans", refresh=1)["items"] == []
+
+
+def test_no_torrent_counts_only_space_that_is_freed(lab: Lab, start: StartFn) -> None:
+    lab.add_movie("Caminandes", 2013, torrent=False, size=3000)
+    linked = lab.add_movie("Glass Half", 2015, torrent=False, size=5000)
+    os.link(linked.file, os.path.join(lab.data, "elsewhere.mkv"))  # another link: deleting it frees nothing
+    s = start()
+    items = s.api("/api/orphans")["items"]
+    assert {x["title"]: x["linked"] for x in items} == {"Caminandes": False, "Glass Half": True}
+    assert s.api("/api/orphan-plan", ids=",".join(x["id"] for x in items))["size"] == 3000

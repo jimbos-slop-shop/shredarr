@@ -18,7 +18,7 @@ def _errors() -> Iterator[None]:
     try:
         yield
     except qbittorrentapi.LoginFailed as e:
-        raise ServiceHTTPError(403, "Forbidden") from e  # what qBittorrent answers to a wrong password
+        raise ServiceError("wrong username or password") from e
     except qbittorrentapi.HTTPError as e:
         raise ServiceHTTPError(getattr(e, "http_status_code", 0) or 0, str(e)) from e
     except qbittorrentapi.APIConnectionError as e:

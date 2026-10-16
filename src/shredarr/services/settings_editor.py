@@ -70,7 +70,9 @@ class SettingsEditor:
             else:
                 self.overrides.remove(h)
         what = (
-            rule_text({"mode": mode, "min_seed_days": d, "min_ratio": r}) + f" ({MODES[mode]})"
+            MODES[mode]
+            if mode == "never"
+            else rule_text({"mode": mode, "min_seed_days": d, "min_ratio": r}) + f" ({MODES[mode]})"
             if mode in MODES
             else "back to default"
         )
