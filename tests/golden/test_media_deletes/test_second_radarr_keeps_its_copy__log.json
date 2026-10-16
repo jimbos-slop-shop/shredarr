@@ -1,0 +1,8 @@
+[
+  "Shredarr started",
+  "Jellyfin deleted Movie: Sintel",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  removed 'Sintel' from Radarr (with import exclusion)",
+  "  'Sintel' still has its file in Radarr 4K, so that copy stays",
+  "deleted torrent 'Sintel.2010.1080p.BluRay.x264-LAB' and its data (seeded 30.0 of 14 days, ratio 3.00 of 2)"
+]

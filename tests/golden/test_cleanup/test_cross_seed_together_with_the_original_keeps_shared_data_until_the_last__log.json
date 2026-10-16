@@ -1,0 +1,10 @@
+[
+  "Shredarr started",
+  "Jellyfin deleted Movie: Big Buck Bunny",
+  "  1 torrent(s) found in history, 1 newly queued for cleanup after seeding",
+  "  removed 'Big Buck Bunny' from Radarr (with import exclusion)",
+  "  removed 'Big Buck Bunny' from Seerr",
+  "  cross-seed 'Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB' (announce.othersite.net) of Big Buck Bunny queued for cleanup too",
+  "deleted torrent 'Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB' and its data (seeded 30.0 of 14 days, ratio 3.00 of 2)",
+  "deleted torrent 'Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB' and its data (cross-seed, together with the original)"
+]

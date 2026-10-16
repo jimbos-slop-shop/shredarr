@@ -1,0 +1,72 @@
+[project]
+name = "shredarr"
+version = "2.0.0"
+description = "Delete it in Jellyfin or Plex, and it's gone everywhere: Sonarr, Radarr, Seerr and your torrent client."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "jschaef80" }]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.120",
+    "httpx>=0.28",
+    "plexapi>=4.17",
+    "python-multipart>=0.0.20",
+    "qbittorrent-api>=2025.7",
+    "transmission-rpc>=7.0",
+    "uvicorn>=0.35",
+]
+
+[project.urls]
+Homepage = "https://github.com/jschaef80/shredarr"
+Issues = "https://github.com/jschaef80/shredarr/issues"
+
+[project.scripts]
+shredarr = "shredarr.__main__:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "pytest-timeout>=2.4",
+    "ruff>=0.13",
+    "types-requests",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "PTH"]
+ignore = [
+    "PLR0911", # too many return statements: request handlers branch a lot
+    "PLR0912", # too many branches
+    "PLR0913", # too many arguments
+    "PLR0915", # too many statements
+    "PLR2004", # magic values: HTTP status codes and thresholds read better inline
+    "PTH",     # os.path is used deliberately: paths come from other apps as plain strings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/legacy/*" = ["ALL"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+exclude = ["tests/legacy/"]
+
+[[tool.mypy.overrides]]
+module = ["plexapi.*", "deluge_web_client.*", "transmission_rpc.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+timeout = 120

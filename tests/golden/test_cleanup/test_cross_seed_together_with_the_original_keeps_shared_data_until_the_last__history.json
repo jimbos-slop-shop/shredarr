@@ -1,0 +1,18 @@
+[
+  {
+    "cross_seed_of": "Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB",
+    "name": "Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB",
+    "reason": "seeding rule met",
+    "saved_torrent": false,
+    "size": 3010,
+    "title": "Big Buck Bunny"
+  },
+  {
+    "cross_seed_of": null,
+    "name": "Big.Buck.Bunny.2008.1080p.BluRay.x264-LAB",
+    "reason": "seeding rule met",
+    "saved_torrent": true,
+    "size": 0,
+    "title": "Big Buck Bunny"
+  }
+]
