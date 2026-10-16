@@ -35,11 +35,16 @@ RESET_BODY = """%ERR%<form method=post action=/reset/code><button class=ghost>Se
 <button>Reset password</button></form><div class=links><a href=/login>Back to sign in</a></div>"""
 
 
-def static_file(static_dir: str, path: str) -> tuple[bytes, str] | None:
-    """(content, content type) of a file the browser may load without signing in, or None."""
+def static_name(static_dir: str, path: str) -> str | None:
+    """The file in static/ that path asks for, if it's one the browser may load without signing in."""
     name = ALIASES.get(path) or (path[len("/static/") :] if path.startswith("/static/") else None)
     if not name or "/" in name or name == "index.html" or not os.path.isfile(os.path.join(static_dir, name)):
         return None
+    return name
+
+
+def static_file(static_dir: str, name: str) -> tuple[bytes, str]:
+    """(content, content type) of a file in static/."""
     with open(os.path.join(static_dir, name), "rb") as f:
         return f.read(), CONTENT_TYPES.get(os.path.splitext(name)[1], "application/octet-stream")
 

@@ -119,3 +119,6 @@ class DelugeClient:
 
     def version(self) -> str:
         return "Deluge " + str(self.rpc("daemon.get_version"))
+
+    def close(self) -> None:
+        self._http.close()

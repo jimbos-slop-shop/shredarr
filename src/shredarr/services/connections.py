@@ -12,6 +12,7 @@ from ..clients.plex import PlexClient
 from ..clients.seerr import SeerrClient
 from ..clients.servarr import ArrClient, ProwlarrClient, RadarrClient, SonarrClient
 from ..clients.torrents import Torrent, TorrentClient, make_client
+from ..clients.torrents.deluge import DelugeClient
 from ..config import ARR_KINDS, CLIENTS, JSON, SERVICES, ArrInstance, ConfigStore, api_url, kind_of
 from ..files import PathMapper
 
@@ -146,16 +147,25 @@ def describe_service(svc: str, conf: JSON) -> str:
     if not url:
         raise ServiceError("no address set")
     svc = kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
+    key = conf.get("api_key", "")
     if svc in ("sonarr", "radarr", "prowlarr"):
-        r = ArrClient(api_url(svc, url), conf.get("api_key", "")).system_status()
+        with ArrClient(api_url(svc, url), key) as arr:
+            r = arr.system_status()
         return f"{r.get('appName', SERVICES[svc])} {r.get('version', '')}".strip()
     if svc in CLIENTS:
-        return make_client(svc, {"username": "", "password": "", **conf, "url": url}).version()
+        client = make_client(svc, {"username": "", "password": "", **conf, "url": url})
+        try:
+            return client.version()
+        finally:
+            if isinstance(client, DelugeClient):
+                client.close()
     if svc == "plex":
-        return PlexClient(url, conf.get("api_key", "")).describe()
+        return PlexClient(url, key).describe()
     if svc == "seerr":
-        return "Seerr " + SeerrClient(api_url(svc, url), conf.get("api_key", "")).version()
+        with SeerrClient(api_url(svc, url), key) as seerr:
+            return "Seerr " + seerr.version()
     if svc == "jellyfin":
-        r = JellyfinClient(url, conf.get("api_key", "")).system_info()
+        with JellyfinClient(url, key) as jellyfin:
+            r = jellyfin.system_info()
         return f"Jellyfin {r.get('Version', '')} · {r.get('ServerName', '')}"
     raise ServiceError("unknown service")
