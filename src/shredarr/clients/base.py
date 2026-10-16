@@ -71,10 +71,12 @@ def describe(e: Exception) -> str:
 def parse_body(r: httpx.Response) -> Any:
     """JSON if the app sent JSON, otherwise the text (some endpoints answer with plain text or nothing). A web page
     means something else answered, such as a reverse proxy's sign-in page."""
-    kind = r.headers.get("content-type", "")
+    kind, body = r.headers.get("content-type", ""), r.content.strip()
+    if not body:  # e.g. after a DELETE, sometimes still labelled as JSON
+        return r.text
     if "html" in kind:
         raise ServiceError("got a web page instead of an API answer (check the address)")
-    if "json" in kind or r.content.lstrip()[:1] in (b"[", b"{"):
+    if "json" in kind or body[:1] in (b"[", b"{"):
         try:
             return r.json()
         except ValueError as e:

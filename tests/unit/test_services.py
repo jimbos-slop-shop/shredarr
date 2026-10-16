@@ -19,6 +19,7 @@ from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreach
 from shredarr.config import NOTIFY_DEFAULTS
 from shredarr.db import MIGRATIONS
 from shredarr.services import notifications
+from shredarr.services.cleanup import SweepContext
 from shredarr.services.connections import TorrentService
 from shredarr.services.health import Updates
 from shredarr.services.settings_editor import SettingsEditor
@@ -177,6 +178,7 @@ def test_web_page_instead_of_json() -> None:
         "a": 1
     }
     assert parse_body(httpx.Response(200, content=b"ok")) == "ok"
+    assert parse_body(httpx.Response(200, headers={"content-type": "application/json"}, content=b"")) == ""
 
 
 def test_extra_instance_keys(core: Shredarr) -> None:
@@ -240,3 +242,61 @@ def test_sign_in_limit_address() -> None:
     assert ip("8.8.8.8", "10.9.9.9") == "8.8.8.8"  # straight from the internet: the header is ignored
     assert ip("172.18.0.2", "198.51.100.7") == "198.51.100.7"  # a proxy in the Docker network
     assert ip("127.0.0.1", "1.1.1.1, 198.51.100.7") == "198.51.100.7"  # the first entry is whatever the client sent
+
+
+def test_low_space_waits_when_sonarr_radarr_cant_be_asked(
+    core: Shredarr, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without Sonarr/Radarr there's no telling whether a title rule protects a torrent: it isn't deleted early, and
+    the sweep carries on."""
+    core.db.migrate()
+    core.config.save({"low_space": {"enabled": True, "min_free_gb": 10**9}})
+    h = "a" * 40
+    core.pending.add(h, "Spring", "leftover")
+    t: Any = {"hash": h, "name": "Spring", "save_path": str(tmp_path), "content_path": str(tmp_path), "progress": 1}
+
+    def down(*a: Any) -> None:
+        raise ServiceUnreachable("Sonarr is down")
+
+    monkeypatch.setattr(core.library, "in_library", lambda t: 0)
+    monkeypatch.setattr(core.library, "title_of", down)
+    deleted: list[Any] = []
+    monkeypatch.setattr(core.cleaner, "cleanup", lambda *a, **k: deleted.append(a))
+    core.cleaner.low_space_pass(core.config.load(), SweepContext({h: t}, {}), {})
+    assert not deleted
+
+
+def test_faked_forwarded_addresses_still_hit_a_limit(core: Shredarr) -> None:
+    """Each wrong password counts for the address it claims and for the connection it came on (looser)."""
+    lan = "192.168.1.50"
+    for _ in range(9):
+        core.auth.login_failed("10.0.0.1", lan)
+    assert not core.auth.login_blocked("10.0.0.1", lan)
+    core.auth.login_failed("10.0.0.1", lan)
+    assert core.auth.login_blocked("10.0.0.1", lan)  # 10 for one address
+    for i in range(40):
+        core.auth.login_failed(f"10.1.0.{i}", lan)  # a new made-up address every time
+    assert core.auth.login_blocked("10.2.0.1", lan)  # 50 on one connection
+    assert not core.auth.login_blocked("10.2.0.1", "192.168.1.51")
+
+
+def test_config_saves_where_chmod_is_refused(core: Shredarr, monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*a: Any) -> None:
+        raise PermissionError("not on this share")
+
+    monkeypatch.setattr(os, "fchmod", refuse)
+    core.config.save({"dry_run": True})
+    assert core.config.load().dry_run
+
+
+def test_cut_off_saved_torrents_are_cleaned_up(core: Shredarr) -> None:
+    os.makedirs(core.saved.folder, exist_ok=True)
+    old, new = (os.path.join(core.saved.folder, f"{c * 40}.torrent.tmp") for c in "ab")
+    for p in (old, new):
+        with open(p, "wb") as f:
+            f.write(b"d8:announce")
+    os.utime(old, (time.time() - 7200, time.time() - 7200))
+    core.saved.prune()
+    assert not os.path.exists(old) and os.path.exists(new)  # the new one may still be being written
+    core.saved.delete_all()
+    assert not os.path.exists(new)

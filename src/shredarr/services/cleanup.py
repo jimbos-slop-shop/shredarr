@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from ..clients.base import ServiceError
 from ..clients.torrents import Torrent
 from ..config import JSON, Config, ConfigStore, Rule
 from ..files import FileKey, files_under
@@ -293,9 +294,14 @@ class Cleaner:
             return
         for p in self.pending.all():
             t = ts.get(p.hash)
-            if not t or t["progress"] < 1 or self.library.in_library(t):
+            if not t or t["progress"] < 1:
                 continue
-            if self.rule(t, ov, c, self.library.title_of(p.hash, p.name))["mode"] == "never":
+            try:
+                if self.library.in_library(t):
+                    continue
+                if self.rule(t, ov, c, self.library.title_of(p.hash, p.name))["mode"] == "never":
+                    continue
+            except ServiceError:  # Sonarr/Radarr can't be asked: unsure it's out of the library or unprotected, so wait
                 continue
             if p.added_at + c.grace_seconds > time.time():
                 continue

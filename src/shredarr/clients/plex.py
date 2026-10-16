@@ -30,11 +30,11 @@ class PlexClient:
         """Run fn on the server, turning plexapi's errors into Shredarr's. Connecting costs a request of its own, so
         the connection is kept for the next call, and made again after any error. fresh: connect again anyway
         (plexapi keeps what it read, such as the library sections, for as long as the connection lives)."""
-        done = False
+        done, server = False, self._server  # read once: another thread may drop it after an error of its own
         try:
-            if self._server is None or fresh:
-                self._server = PlexServer(self.url, self.token, timeout=TIMEOUT)
-            out = fn(self._server)
+            if server is None or fresh:
+                server = self._server = PlexServer(self.url, self.token, timeout=TIMEOUT)
+            out = fn(server)
             done = True
             return out
         except Unauthorized as e:
@@ -46,7 +46,7 @@ class PlexClient:
         except requests.RequestException as e:
             raise ServiceUnreachable(str(e)) from e
         finally:
-            if not done:
+            if not done and self._server is server:  # don't drop a newer one another thread just made
                 self._server = None
 
     def describe(self) -> str:

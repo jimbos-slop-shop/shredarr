@@ -25,6 +25,9 @@ RESET_VALID = 900  # seconds
 RESET_EVERY = 60  # seconds between reset codes
 RESET_TRIES = 5
 LOGIN_WINDOW, LOGIN_TRIES = 900, 10  # at most this many wrong passwords per address in this many seconds
+# ... and this many per connection, whatever address it says it forwards: a host on the home network can write any
+# X-Forwarded-For, while everyone behind a real proxy shares its connection address (so this limit is looser)
+LOGIN_PEER_TRIES = 50
 
 
 def hash_password(pw: str, salt: str | None = None) -> JSON:
@@ -81,15 +84,18 @@ class Auth:
         return bool(token) and self.sessions.valid(token or "")
 
     # ------------------------------------------------------------------ wrong passwords
-    def login_blocked(self, ip: str) -> bool:
+    def login_blocked(self, ip: str, peer: str) -> bool:
+        """ip: who is signing in (as far as can be told); peer: the address the connection comes from."""
         now = time.time()
         with self._lock:
-            self._fails[ip] = [x for x in self._fails.get(ip, []) if now - x < LOGIN_WINDOW]
-            return len(self._fails[ip]) >= LOGIN_TRIES
+            for key in (ip, "peer:" + peer):
+                self._fails[key] = [x for x in self._fails.get(key, []) if now - x < LOGIN_WINDOW]
+            return len(self._fails[ip]) >= LOGIN_TRIES or len(self._fails["peer:" + peer]) >= LOGIN_PEER_TRIES
 
-    def login_failed(self, ip: str) -> None:
+    def login_failed(self, ip: str, peer: str) -> None:
         with self._lock:
-            self._fails.setdefault(ip, []).append(time.time())
+            for key in (ip, "peer:" + peer):
+                self._fails.setdefault(key, []).append(time.time())
 
     def login_ok(self, ip: str) -> None:
         with self._lock:

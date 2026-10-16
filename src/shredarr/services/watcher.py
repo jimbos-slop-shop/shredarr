@@ -37,7 +37,7 @@ class LibraryWatcher:
         self.files: dict[str, list[int]] | None = None
         self.missing: dict[str, float] = {}
         self.offline = False
-        self.vanished = 0  # how many files the last "vanished at once" message was about, so it's logged once
+        self.vanished = 0  # files the "vanished at once" message was about (0: not said), so it's said once
 
     def library_files(self) -> dict[str, list[int]] | None:
         """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be
@@ -79,9 +79,10 @@ class LibraryWatcher:
         gone = [p for p in (prev or {}) if p not in now]
         if prev and len(gone) > MASS_VANISH[0] and len(gone) > MASS_VANISH[1] * len(prev):
             # a disk or share that went away isn't a delete: keep the old list and look again next time. Said once
-            # (not on every look while it stays that way), as a problem, so it's also sent as a notification: if it
-            # was a real delete after all, nothing else will clean it up
-            if len(gone) != self.vanished:
+            # until the library looks normal again (not on every look, nor every time a half-mounted share changes
+            # the count), as a problem, so it's also sent as a notification: if it was a real delete after all,
+            # nothing else will clean it up
+            if not self.vanished:
                 self.vanished = len(gone)
                 self.activity.error(
                     f"Library watch: {len(gone)} of {len(prev)} files vanished at once. That looks like a disk "

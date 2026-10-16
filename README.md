@@ -170,8 +170,10 @@ Settings has a menu on the left (a row of tabs on phones) and shows one section 
 - API keys and passwords are stored in `config.json` in your config folder (readable only by its owner) and are
   never sent back to the browser. Tracker URLs are only ever shown as host names, never with your passkey.
 - Shredarr is meant for your home network. If you expose it to the internet, put it behind a reverse proxy with
-  HTTPS. The wrong-password limit then counts the address the proxy passes on (the last `X-Forwarded-For` entry),
-  but only when the proxy connects from a private network address, such as one in the same Docker network.
+  HTTPS. The wrong-password limit (10 in 15 minutes) then counts the address the proxy passes on (the last
+  `X-Forwarded-For` entry), but only when the proxy connects from a private network address, such as one in the
+  same Docker network. Each connection address also has a looser limit of 50, so a device on your network can't get
+  around it by making up addresses.
 
 ## Try the demo
 

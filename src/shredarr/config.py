@@ -5,6 +5,7 @@ The file is read again whenever it's needed, so changes saved in the web UI appl
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import json
 import os
@@ -81,6 +82,11 @@ class Rule(TypedDict, total=False):
 def kind_of(key: str | None) -> str:
     """'sonarr' or 'radarr' for an instance key ("radarr", "radarr-4k", ...)."""
     return (key or "").split("-")[0]
+
+
+def service_kind(svc: str) -> str:
+    """Which app a Settings entry is: "radarr" for "radarr-4k"; any other service as it is."""
+    return kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
 
 
 def api_suffix(svc: str) -> str:
@@ -283,11 +289,11 @@ class ConfigStore:
         with self._lock:
             os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
             tmp = self.path + ".tmp"
-            fd = os.open(
-                tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
-            )  # never readable by others, not even briefly
-            os.fchmod(fd, 0o600)  # a .tmp left over from before keeps its old mode otherwise
-            with os.fdopen(fd, "w") as f:
+            # never readable by others, not even briefly
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:  # owns fd from here, so it's closed whatever happens next
+                with contextlib.suppress(OSError):  # some network shares refuse chmod; the file still gets saved
+                    os.fchmod(fd, 0o600)  # a .tmp left over from before keeps its old mode otherwise
                 json.dump(raw, f, indent=2)
             os.replace(tmp, self.path)
 

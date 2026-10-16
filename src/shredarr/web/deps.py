@@ -24,9 +24,14 @@ def client_ip(request: Request) -> str:
     """Who is signing in, for the failed sign-in limit. X-Forwarded-For can be written by anyone, so it's only used
     when the connection comes from a private network address (a reverse proxy in front of Shredarr), and then only
     its last entry, which that proxy added itself."""
-    peer = request.client.host if request.client else ""
+    peer = peer_ip(request)
     forwarded = request.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
     return forwarded if forwarded and private_address(peer) else peer
+
+
+def peer_ip(request: Request) -> str:
+    """The address the connection itself comes from (a proxy's, behind one)."""
+    return request.client.host if request.client else ""
 
 
 def private_address(ip: str) -> bool:
