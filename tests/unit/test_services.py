@@ -264,3 +264,17 @@ def test_low_space_waits_when_sonarr_radarr_cant_be_asked(
     monkeypatch.setattr(core.cleaner, "cleanup", lambda *a, **k: deleted.append(a))
     core.cleaner.low_space_pass(core.config.load(), SweepContext({h: t}, {}), {})
     assert not deleted
+
+
+def test_faked_forwarded_addresses_still_hit_a_limit(core: Shredarr) -> None:
+    """Each wrong password counts for the address it claims and for the connection it came on (looser)."""
+    lan = "192.168.1.50"
+    for _ in range(9):
+        core.auth.login_failed("10.0.0.1", lan)
+    assert not core.auth.login_blocked("10.0.0.1", lan)
+    core.auth.login_failed("10.0.0.1", lan)
+    assert core.auth.login_blocked("10.0.0.1", lan)  # 10 for one address
+    for i in range(40):
+        core.auth.login_failed(f"10.1.0.{i}", lan)  # a new made-up address every time
+    assert core.auth.login_blocked("10.2.0.1", lan)  # 50 on one connection
+    assert not core.auth.login_blocked("10.2.0.1", "192.168.1.51")

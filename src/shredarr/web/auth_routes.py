@@ -10,7 +10,7 @@ from fastapi.responses import Response
 
 from ..services.auth import SESSION_DAYS
 from . import pages
-from .deps import Core, JsonBody, client_ip, session_token
+from .deps import Core, JsonBody, client_ip, peer_ip, session_token
 from .responses import html, redirect, session_cookie, text
 
 router = APIRouter()
@@ -45,11 +45,11 @@ def login_form(core: Core, request: Request) -> Response:
 
 @router.post("/login")
 def login(core: Core, request: Request, password: FormField = "") -> Response:
-    ip = client_ip(request)
-    if core.auth.login_blocked(ip):
+    ip, peer = client_ip(request), peer_ip(request)
+    if core.auth.login_blocked(ip, peer):
         return html(pages.login_page(core, "Too many attempts. Try again in 15 minutes."), 429)
     if not core.auth.check(password):
-        core.auth.login_failed(ip)
+        core.auth.login_failed(ip, peer)
         time.sleep(1)
         return html(pages.login_page(core, "That password isn't right."), 401)
     core.auth.login_ok(ip)
