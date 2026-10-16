@@ -84,6 +84,11 @@ def kind_of(key: str | None) -> str:
     return (key or "").split("-")[0]
 
 
+def service_kind(svc: str) -> str:
+    """Which app a Settings entry is: "radarr" for "radarr-4k"; any other service as it is."""
+    return kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
+
+
 def api_suffix(svc: str) -> str:
     return API_SUFFIX.get(svc) or API_SUFFIX.get(kind_of(svc), "")
 

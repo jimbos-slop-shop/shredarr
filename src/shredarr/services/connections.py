@@ -14,7 +14,6 @@ from ..clients.seerr import SeerrClient
 from ..clients.servarr import ArrClient, ProwlarrClient, RadarrClient, SonarrClient
 from ..clients.torrents import Torrent, TorrentClient, make_client
 from ..config import (
-    ARR_KINDS,
     CLIENTS,
     JSON,
     SECRET_KEYS,
@@ -25,6 +24,7 @@ from ..config import (
     api_url,
     base_url,
     kind_of,
+    service_kind,
 )
 from ..files import PathMapper
 
@@ -175,7 +175,7 @@ def with_saved_secrets(c: Config, svc: str, conf: JSON) -> JSON:
     """Settings → Test leaves a saved key or password blank, meaning "the saved one". It's only filled in when the
     address is the saved one too: otherwise the saved key would be sent to whatever address was typed."""
     saved = c.service(svc) or next((x for x in c.get("extra_arrs", []) if x.get("key") == svc), {})
-    kind = kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
+    kind = service_kind(svc)
     if base_url(kind, conf.get("url")).casefold() != base_url(kind, saved.get("url")).casefold():
         return conf
     return {**conf, **{k: saved[k] for k in SECRET_KEYS if not conf.get(k) and saved.get(k)}}
@@ -186,7 +186,7 @@ def describe_service(svc: str, conf: JSON) -> str:
     url = (conf or {}).get("url", "").strip().rstrip("/")
     if not url:
         raise ServiceError("no address set")
-    svc = kind_of(svc) if kind_of(svc) in ARR_KINDS else svc
+    svc = service_kind(svc)
     key = conf.get("api_key", "")
     if svc in ("sonarr", "radarr", "prowlarr"):
         with ArrClient(api_url(svc, url), key) as arr:
