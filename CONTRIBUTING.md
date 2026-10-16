@@ -115,9 +115,10 @@ notifications are sent. `tests/test_read_only.py` checks that nothing gets throu
 
 1. Set the version in `pyproject.toml` (the app reads it from there) and run `uv lock`.
 2. Add the release to `CHANGELOG.md`.
-3. Commit, then tag: `git tag v2.1.0 && git push --tags`.
-4. CI tests it, builds the image for amd64 and arm64, and publishes `ghcr.io/jschaef80/shredarr:2.1.0`, `:2.1` and
+3. Bump the uv version in `ci.yml` and the Dockerfile's `COPY --from=ghcr.io/astral-sh/uv` line by hand.
+4. Commit, then tag: `git tag v2.1.0 && git push --tags`.
+5. CI tests it, builds the image for amd64 and arm64, and publishes `ghcr.io/jschaef80/shredarr:2.1.0`, `:2.1` and
    `:latest`.
-5. Write the release notes on GitHub.
+6. Write the release notes on GitHub.
 
 Every push to `main` also publishes a tested `:edge` image.
