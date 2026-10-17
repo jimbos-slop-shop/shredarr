@@ -12,7 +12,7 @@ body:
     attributes:
       label: Shredarr version
       description: Shown in the footer and under Settings → About.
-      placeholder: "2.3.1"
+      placeholder: "2.3.2"
     validations:
       required: true
   - type: dropdown
