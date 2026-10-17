@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jschaef80/shredarr"
-Issues = "https://github.com/jschaef80/shredarr/issues"
+Homepage = "https://github.com/jimbos-slop-shop/shredarr"
+Issues = "https://github.com/jimbos-slop-shop/shredarr/issues"
 
 [project.scripts]
 shredarr = "shredarr.__main__:main"

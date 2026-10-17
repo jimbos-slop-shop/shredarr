@@ -1,6 +1,6 @@
 services:
   shredarr:
-    image: ghcr.io/jschaef80/shredarr:latest
+    image: ghcr.io/jimbos-slop-shop/shredarr:latest
     container_name: shredarr
     restart: unless-stopped
     ports:

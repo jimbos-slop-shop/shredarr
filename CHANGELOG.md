@@ -1,12 +1,23 @@
 # Changelog
 
-Notable changes per release. Releases before 2.0.0 are in the [git history](https://github.com/jschaef80/shredarr/commits/main).
+Notable changes per release. Releases before 2.0.0 are in the [git history](https://github.com/jimbos-slop-shop/shredarr/commits/main).
 
 ## [Unreleased]
 
+### Changed
+
+- The project moved to [jimbos-slop-shop/shredarr](https://github.com/jimbos-slop-shop/shredarr). The Docker image is
+  now `ghcr.io/jimbos-slop-shop/shredarr`: change the `image:` line in your compose file, because the old
+  `ghcr.io/jschaef80/shredarr` gets no new versions.
+
+### Fixed
+
+- The update check looks at the new repo. Before, GitHub answered the old address with a redirect, the check failed,
+  and no "new version" notice was shown.
+
 ## [2.3.1] - 2026-10-16
 
-Review fixes from [#7](https://github.com/jschaef80/shredarr/pull/7).
+Review fixes from [#7](https://github.com/jimbos-slop-shop/shredarr/pull/7).
 
 ### Fixed
 
@@ -27,9 +38,9 @@ Review fixes from [#7](https://github.com/jschaef80/shredarr/pull/7).
 
 ## [2.3.0] - 2026-10-16
 
-Bug fixes, structure, performance and security work ([#6](https://github.com/jschaef80/shredarr/pull/6)), including:
+Bug fixes, structure, performance and security work ([#6](https://github.com/jimbos-slop-shop/shredarr/pull/6)), including:
 
-- The Jellyfin API key is sent in the Authorization header, so Jellyfin 12 accepts it ([#4](https://github.com/jschaef80/shredarr/issues/4)).
+- The Jellyfin API key is sent in the Authorization header, so Jellyfin 12 accepts it ([#4](https://github.com/jimbos-slop-shop/shredarr/issues/4)).
 - Proxied requests from the same machine need the password. Jellyfin webhook calls are refused when no token is set.
 - Faked `X-Forwarded-For` headers no longer get around the wrong-password limit.
 - Config, database and saved `.torrent` files are written safely.
@@ -53,9 +64,9 @@ Bug fixes, structure, performance and security work ([#6](https://github.com/jsc
 - Fixes: Undo of RAR releases with 10+ parts, the log text for Never rules, the message for a wrong qBittorrent
   password.
 
-[Unreleased]: https://github.com/jschaef80/shredarr/compare/v2.3.1...HEAD
-[2.3.1]: https://github.com/jschaef80/shredarr/compare/v2.3.0...v2.3.1
-[2.3.0]: https://github.com/jschaef80/shredarr/compare/v2.2.0...v2.3.0
-[2.2.0]: https://github.com/jschaef80/shredarr/compare/v2.1.0...v2.2.0
-[2.1.0]: https://github.com/jschaef80/shredarr/compare/v2.0.0...v2.1.0
-[2.0.0]: https://github.com/jschaef80/shredarr/compare/v1.2.1...v2.0.0
+[Unreleased]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.3.0...v2.3.1
+[2.3.0]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/jimbos-slop-shop/shredarr/compare/v1.2.1...v2.0.0

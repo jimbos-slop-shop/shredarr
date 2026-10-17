@@ -82,7 +82,7 @@ The screenshots use made-up demo data; see [Try the demo](#try-the-demo).
 ```yaml
 services:
   shredarr:
-    image: ghcr.io/jschaef80/shredarr:latest
+    image: ghcr.io/jimbos-slop-shop/shredarr:latest
     container_name: shredarr
     restart: unless-stopped
     ports:
@@ -182,7 +182,7 @@ with the password `demo`. Shredarr itself runs unchanged, against the same fake 
 and Seerr its tests use. You need [uv](https://docs.astral.sh/uv/):
 
 ```sh
-git clone https://github.com/jschaef80/shredarr && cd shredarr
+git clone https://github.com/jimbos-slop-shop/shredarr && cd shredarr
 uv run tools/demo.py
 ```
 
