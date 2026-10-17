@@ -4,6 +4,17 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
+### Changed
+
+- The project moved to [jimbos-slop-shop/shredarr](https://github.com/jimbos-slop-shop/shredarr). The Docker image is
+  now `ghcr.io/jimbos-slop-shop/shredarr`: change the `image:` line in your compose file, because the old
+  `ghcr.io/jschaef80/shredarr` gets no new versions.
+
+### Fixed
+
+- The update check looks at the new repo. Before, GitHub answered the old address with a redirect, the check failed,
+  and no "new version" notice was shown.
+
 ## [2.3.1] - 2026-10-16
 
 Review fixes from [#7](https://github.com/jimbos-slop-shop/shredarr/pull/7).
