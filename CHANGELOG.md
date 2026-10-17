@@ -4,6 +4,8 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-10-17
+
 ### Changed
 
 - The project moved to [jimbos-slop-shop/shredarr](https://github.com/jimbos-slop-shop/shredarr). The Docker image is
@@ -34,6 +36,7 @@ Review fixes from [#7](https://github.com/jimbos-slop-shop/shredarr/pull/7).
 ### Changed
 
 - The "files vanished" notification for Plex is sent once per outage instead of every time the count of missing files changes.
+- The Docker image runs on Python 3.14 (it was 3.13).
 - Code tidy-ups with no change in behavior.
 
 ## [2.3.0] - 2026-10-16
@@ -64,7 +67,8 @@ Bug fixes, structure, performance and security work ([#6](https://github.com/jim
 - Fixes: Undo of RAR releases with 10+ parts, the log text for Never rules, the message for a wrong qBittorrent
   password.
 
-[Unreleased]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/jimbos-slop-shop/shredarr/compare/v2.1.0...v2.2.0
