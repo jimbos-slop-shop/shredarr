@@ -4,7 +4,7 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
-## [2.3.2] - 2026-10-16
+## [2.3.2] - 2026-10-17
 
 ### Changed
 
