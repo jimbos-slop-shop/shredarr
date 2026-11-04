@@ -22,8 +22,9 @@ def version_tuple(v: str) -> tuple[int, ...]:
 
 
 class Health:
-    def __init__(self, config: ConfigStore, activity: Activity) -> None:
+    def __init__(self, config: ConfigStore, activity: Activity, grace: float = 120) -> None:
         self.config = config
+        self.grace = grace  # seconds an app must stay unreachable before it is reported
         self.activity = activity
         self.status: dict[str, JSON] = {}  # service key -> {ok, msg, ts[, name]}
         self._lock = threading.Lock()
@@ -34,17 +35,29 @@ class Health:
             for k in [k for k in self.status if k not in {x[0] for x in conns}]:
                 self.status.pop(k, None)
         for svc, name, conf in conns:
-            was = self.status.get(svc, {}).get("ok")
+            prev = self.status.get(svc, {})
             try:
                 info = describe_service(svc, {**conf, "url": base_url(svc, conf["url"])})
             except Exception as e:  # whatever went wrong, the app counts as unreachable
-                msg = describe(e)
-                self.status[svc] = {"ok": False, "msg": msg, "ts": time.time(), "name": name}
-                if was is not False:
+                msg, now = describe(e), time.time()
+                since = prev.get("since", now) if prev.get("ok") is False else now
+                reported = bool(prev.get("reported")) and prev.get("ok") is False
+                if not reported and now - since >= self.grace:
+                    reported = True
                     self.activity.error(f"Connection FAILED: can't reach {name} ({msg})")
+                elif not reported:
+                    log.warning("%s unreachable, reported if still down after %ds: %s", name, self.grace, msg)
+                self.status[svc] = {
+                    "ok": False,
+                    "msg": msg,
+                    "ts": now,
+                    "name": name,
+                    "since": since,
+                    "reported": reported,
+                }
                 continue
             self.status[svc] = {"ok": True, "msg": info, "ts": time.time()}
-            if was is False:
+            if prev.get("ok") is False and prev.get("reported"):
                 self.activity.info(f"Connection restored: {name}")
 
 

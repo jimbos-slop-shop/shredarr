@@ -18,6 +18,7 @@ from shredarr.app import Shredarr
 from shredarr.clients.base import ServiceError, ServiceHTTPError, ServiceUnreachable, SignInFailed, parse_body
 from shredarr.config import NOTIFY_DEFAULTS
 from shredarr.db import MIGRATIONS
+from shredarr.services import health as health_mod
 from shredarr.services import notifications
 from shredarr.services.cleanup import SweepContext
 from shredarr.services.connections import TorrentService
@@ -300,3 +301,53 @@ def test_cut_off_saved_torrents_are_cleaned_up(core: Shredarr) -> None:
     assert not os.path.exists(old) and os.path.exists(new)  # the new one may still be being written
     core.saved.delete_all()
     assert not os.path.exists(new)
+
+
+def test_health_waits_before_reporting_a_failure(monkeypatch: pytest.MonkeyPatch, core: Shredarr) -> None:
+    clock = [1000.0]
+    up = [False]
+
+    def fake_describe(svc: str, conf: Any) -> str:
+        if not up[0]:
+            raise ConnectionError("down")
+        return "ok"
+
+    monkeypatch.setattr(health_mod, "describe_service", fake_describe)
+    monkeypatch.setattr(health_mod.time, "time", lambda: clock[0])
+
+    class FakeConfig:
+        def load(self) -> Any:
+            return self
+
+        def connections(self) -> list[Any]:
+            return [("qbittorrent", "qBittorrent", {"url": "http://q"})]
+
+    events: list[str] = []
+    monkeypatch.setattr(core.activity, "error", lambda m, *a, **k: events.append("FAILED"))
+    monkeypatch.setattr(core.activity, "info", lambda m, *a, **k: events.append("restored"))
+    h = health_mod.Health(FakeConfig(), core.activity, 120)  # type: ignore[arg-type]
+
+    # a short blip: one failed check, then back up -> nothing reported
+    h.check()
+    assert h.status["qbittorrent"]["ok"] is False
+    clock[0] += 300
+    up[0] = True
+    h.check()
+    assert events == []
+
+    # down across two checks -> FAILED once, then restored once
+    up[0] = False
+    clock[0] += 300
+    h.check()
+    clock[0] += 60
+    h.check()  # e.g. a check right after saving settings: still inside the grace period
+    assert events == []
+    clock[0] += 240
+    h.check()
+    clock[0] += 300
+    h.check()
+    assert events == ["FAILED"]
+    up[0] = True
+    clock[0] += 300
+    h.check()
+    assert events == ["FAILED", "restored"]
