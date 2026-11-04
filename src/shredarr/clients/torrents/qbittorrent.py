@@ -36,6 +36,9 @@ class QBittorrentClient:
             REQUESTS_ARGS={"timeout": TIMEOUT},
             RAISE_NOTIMPLEMENTEDERROR_FOR_UNIMPLEMENTED_API_ENDPOINTS=False,
             DISABLE_LOGGING_DEBUG_OUTPUT=True,
+            # use the scheme in the URL; otherwise a down http WebUI is retried over https and the error
+            # becomes a misleading "untrusted certificate" message
+            FORCE_SCHEME_FROM_HOST=True,
         )
 
     @staticmethod

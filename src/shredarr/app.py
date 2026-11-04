@@ -130,7 +130,7 @@ class Shredarr:
         )
         self.cleaner.after_sweep.append(self.redownloader.check)
         self.auth = Auth(self.config, self.sessions, settings.reset_file, self.activity, self.notifier)
-        self.health = Health(self.config, self.activity)
+        self.health = Health(self.config, self.activity, settings.health_grace)
         self.updates = Updates(self.config, settings.repo, self.version)
         self.webhook = WebhookSetup(self.config, self.connections, self.activity)
         self.dashboard = Dashboard(

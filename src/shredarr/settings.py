@@ -17,6 +17,9 @@ class Settings:
     repo: str = "jimbos-slop-shop/shredarr"  # where update checks look for new releases
     watch_interval: float = 60  # Plex library watch: seconds between looks at the library folders
     watch_confirm: float = 100  # seconds a file must stay gone: an upgrade or rename replaces it within seconds
+    # seconds a connection must stay down before it is reported: with checks every 5 minutes that means two
+    # failed checks in a row, so a ~30 s container restart (a VPN reconnect, an app update) isn't an alert
+    health_grace: float = 120
     read_only: bool = False  # a test copy: never change anything in another app, send no notifications
     static_dir: str = STATIC_DIR
 
@@ -31,6 +34,7 @@ class Settings:
             repo=env("SHREDARR_REPO", cls.repo),
             watch_interval=float(env("SHREDARR_WATCH_INTERVAL", str(cls.watch_interval))),
             watch_confirm=float(env("SHREDARR_WATCH_CONFIRM", str(cls.watch_confirm))),
+            health_grace=float(env("SHREDARR_HEALTH_GRACE", str(cls.health_grace))),
             read_only=env("SHREDARR_READ_ONLY", "").lower() in ("1", "true", "yes", "on"),
         )
 

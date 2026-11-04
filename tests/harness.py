@@ -75,6 +75,7 @@ class Shredarr:
             "SHREDARR_PORT": str(self.port),
             "SHREDARR_WATCH_INTERVAL": "0.5",
             "SHREDARR_WATCH_CONFIRM": "1.5",
+            "SHREDARR_HEALTH_GRACE": "0",
             "PYTHONUNBUFFERED": "1",
             "TZ": "UTC",
             **(env or {}),
