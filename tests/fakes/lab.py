@@ -6,12 +6,14 @@ client would have: real files, hardlinked library copies, arr history with downl
 
 from __future__ import annotations
 
+import ctypes
 import datetime as dt
 import hashlib
 import os
 import re
 import shutil
 import time
+from ctypes import wintypes
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,11 +31,61 @@ def stable_int(text: str, digits: int = 6) -> int:
 
 
 def write(path: str, size: int) -> str:
-    """A file of this size that takes no disk space (sparse), so the lab can hold "20 GB" season packs."""
+    """A file of this length that takes no disk space, so the lab can hold "20 GB" season packs.
+
+    Shredarr reads the length (torrent size, Sonarr's file size, bytes freed). On Windows, truncate()
+    fills that length with real bytes unless the file is marked sparse before it is extended.
+    """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
-        f.truncate(size)
+        if os.name != "nt":
+            f.truncate(size)
+    if os.name == "nt":
+        _sparse_extend(path, size)
     return path
+
+
+def _sparse_extend(path: str, size: int) -> None:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.DeviceIoControl.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.c_void_p,
+    ]
+    kernel32.DeviceIoControl.restype = wintypes.BOOL
+    kernel32.SetFilePointerEx.argtypes = [wintypes.HANDLE, ctypes.c_longlong, ctypes.c_void_p, wintypes.DWORD]
+    kernel32.SetFilePointerEx.restype = wintypes.BOOL
+    kernel32.SetEndOfFile.argtypes = [wintypes.HANDLE]
+    kernel32.SetEndOfFile.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.CreateFileW(path, 0x40000000, 1, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        raise OSError(ctypes.get_last_error(), path)
+    try:
+        returned = wintypes.DWORD()
+        if not kernel32.DeviceIoControl(handle, 0x900C4, None, 0, None, 0, ctypes.byref(returned), None):
+            raise OSError(ctypes.get_last_error(), path)
+        if not kernel32.SetFilePointerEx(handle, size, None, 0) or not kernel32.SetEndOfFile(handle):
+            raise OSError(ctypes.get_last_error(), path)
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 @dataclass
