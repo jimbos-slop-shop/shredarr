@@ -80,6 +80,21 @@ def test_disk_going_offline_is_not_a_delete(lab: Lab, start: StartFn) -> None:
     wait_for(lambda: "Shredarr hit a problem" in lab.ntfy.titles(), what="a notification, in case it was a real delete")
 
 
+def test_no_leftovers_queued_while_the_library_watch_sees_a_disk_offline(lab: Lab, start: StartFn) -> None:
+    for i in range(25):
+        lab.add_movie(f"Movie {i:02d}", 2000 + i, torrent=False)
+    m = lab.add_movie("Spring", 2019)
+    assert m.torrent
+    s = start(media="plex", behavior={"auto_queue_leftovers": True}, env={"SHREDARR_LEFTOVER_WAIT": "0"})
+    watching(s)
+    s.sweep()  # the sweep at startup is done before the disk goes away
+    for x in lab.movie_refs.values():
+        lab.delete_movie_files(x)
+    s.wait_log("looks like a disk going offline")
+    s.sweep()  # only Spring has a torrent: one leftover isn't too many, but the library watch says a disk is away
+    assert not s.pending()
+
+
 def test_delete_now_and_undo_rescan_plex(lab: Lab, start: StartFn, golden) -> None:
     m = lab.add_movie("Big Buck Bunny", 2008)
     u = lab.add_movie("Raygun", 2024, ratio=0.1)

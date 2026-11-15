@@ -45,6 +45,7 @@ BEHAVIOR_DEFAULTS = {
     "unmonitor": True,
     "remove_episode_files": True,
     "cross_seed_with_original": False,
+    "auto_queue_leftovers": False,
 }
 LOW_SPACE_DEFAULTS: JSON = {"enabled": False, "min_free_gb": 100}
 POLICY_DEFAULTS: JSON = {"min_length": 8, "upper": False, "digit": False, "symbol": False}

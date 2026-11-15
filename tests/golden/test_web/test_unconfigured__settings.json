@@ -1,5 +1,6 @@
 {
   "behavior": {
+    "auto_queue_leftovers": false,
     "cross_seed_with_original": false,
     "import_exclusion": true,
     "remove_episode_files": true,

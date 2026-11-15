@@ -42,6 +42,7 @@ src/shredarr/
     restore.py       putting media back in Sonarr/Radarr; undo.py: Undo; redownload.py: History → Redownload
     suppressions.py  deletes Shredarr made itself, so the media server's report of them is ignored
     watcher.py       the Plex library watch
+    leftovers.py     leftovers (the dashboard's list), and queueing them by itself when that's switched on
     media_server.py  rescans, for Jellyfin and Plex behind one interface
     auth.py, notifications.py, health.py, dashboard.py, settings_editor.py, webhook_setup.py, ...
   web/             FastAPI: sign-in middleware, routes, pages
@@ -90,6 +91,10 @@ Sonarr/Radarr history with download ids, season packs, upgrades, cross-seeds, RA
 
 Tests only use Shredarr's public surface: the web API, the webhook, config.json, state.db and the command line. So
 they describe what Shredarr does, not how, and a refactor shouldn't need to change them.
+
+The harness shortens Shredarr's timers with environment variables (`SHREDARR_WATCH_CONFIRM`,
+`SHREDARR_HEALTH_GRACE`, ...; see `settings.py`). `SHREDARR_LEFTOVER_WAIT=0` makes leftovers go on the cleanup list
+right away instead of after an hour.
 
 Some expected output (activity log lines, Delete now plans, API responses) is kept in `tests/golden/`. Those files
 were first recorded from Shredarr 1.2.1, before the code was reorganized into this package, and the package
