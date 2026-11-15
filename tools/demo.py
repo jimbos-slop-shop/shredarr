@@ -88,7 +88,7 @@ def history(db_path: str) -> None:
 
 
 def main() -> None:
-    root = tempfile.mkdtemp(prefix="shredarr-demo-", dir="/tmp")
+    root = tempfile.mkdtemp(prefix="shredarr-demo-")
     lab = Lab(os.path.join(root, "lab"))
     lab.add_radarr_instance()
     lab.add_movie("Sintel", 2010, radarr=lab.extra_arrs[0][1], torrent=False, size=int(6.8 * GB))  # type: ignore[arg-type]

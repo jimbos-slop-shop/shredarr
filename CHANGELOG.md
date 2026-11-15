@@ -12,6 +12,11 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
   Sonarr/Radarr can't be reached or the Plex library watch thinks a disk is offline, and when many torrents turn into
   leftovers at once none are added and a notification is sent instead ([#26](https://github.com/jimbos-slop-shop/shredarr/issues/26)).
 
+### Fixed
+
+- The demo no longer writes real gigabytes on Windows. Lab files keep their length and take no disk space.
+- Free space is read with `shutil.disk_usage`, so the torrent list loads on Windows. On Linux the figure is the same as before.
+
 ## [2.3.2] - 2026-10-17
 
 ### Changed
