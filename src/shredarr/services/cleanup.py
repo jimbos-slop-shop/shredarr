@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import threading
 import time
 from collections import Counter
@@ -90,11 +91,18 @@ class SweepContext:
 
 
 def free_gb(ts: Torrents) -> float | None:
-    """Free space on the downloads disk, from the first torrent folder that exists."""
+    """Free space on the downloads disk, from the first torrent folder that exists.
+
+    shutil.disk_usage is f_bavail on Linux, the same figure statvfs reported, and it exists on Windows.
+    """
     for t in ts.values():
-        if os.path.isdir(t["save_path"]):
-            st = os.statvfs(t["save_path"])
-            return st.f_bavail * st.f_frsize / 2**30
+        path = t["save_path"]
+        if not os.path.isdir(path):
+            continue
+        try:
+            return shutil.disk_usage(path).free / 2**30
+        except OSError:
+            return None
     return None
 
 
