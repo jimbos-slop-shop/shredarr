@@ -54,12 +54,15 @@ class FakeServer:
         self.calls: list[Request] = []
         self.lock = threading.RLock()
         self._httpd: ThreadingHTTPServer | None = None
+        self.broken: list[re.Pattern[str]] = []  # paths that answer 503, as if the app were down
 
     # ------------------------------------------------------------------ routing
     def route(self, method: str, pattern: str, handler: Handler) -> None:
         self.routes.append((method, re.compile(pattern + r"/?$"), handler))
 
     def dispatch(self, req: Request) -> Response:
+        if any(p.search(req.path) for p in self.broken):
+            return Response(503, {"message": f"{self.name}: unavailable"})
         for method, pattern, handler in self.routes:
             m = pattern.match(req.path)
             if m and method == req.method:
@@ -68,6 +71,13 @@ class FakeServer:
                     out = handler(req)
                 return out if isinstance(out, Response) else Response(200, out)
         return Response(404, {"message": f"{self.name}: no route for {req.method} {req.path}"})
+
+    def fail(self, pattern: str) -> None:
+        """Requests whose path matches pattern (a regex search) answer 503 until fixed."""
+        self.broken.append(re.compile(pattern))
+
+    def fix(self) -> None:
+        self.broken.clear()
 
     # ------------------------------------------------------------------ recording
     def requests(self, method: str | None = None, path: str | None = None) -> list[Request]:

@@ -220,6 +220,22 @@ def test_many_leftovers_at_once_are_not_queued(lab: Lab, start: StartFn) -> None
     wait_for(lambda: "Shredarr hit a problem" in lab.ntfy.titles(), what="the notification")
 
 
+def test_no_leftovers_queued_while_radarr_cant_list_its_root_folders(lab: Lab, start: StartFn) -> None:
+    """Radarr's root folders drop out of the library list, so its torrents' files can't be found there."""
+    m = lab.add_movie("Spring", 2019)
+    assert m.torrent
+    lab.delete_movie_files(m)  # a real leftover, held back only because Radarr couldn't be asked
+    lab.radarr.fail(r"/rootfolder$")
+    s = start(behavior=AUTO, env=NO_WAIT)
+    s.sweep()
+    assert not s.pending(), "queued while Radarr's root folders were unknown"
+    assert next(t for t in s.api("/api/torrents")["torrents"] if t["hash"] == m.torrent.hash)["leftover"]
+    lab.radarr.fix()
+    s.restart()  # the root folders are looked up again (otherwise within 5 minutes)
+    s.wait_status(m.torrent.hash, "^seeding")
+    assert s.pending()[m.torrent.hash]["source"] == "leftover"
+
+
 def test_no_leftovers_queued_while_a_library_folder_is_missing(lab: Lab, start: StartFn) -> None:
     m = lab.add_movie("Spring", 2019)
     assert m.torrent

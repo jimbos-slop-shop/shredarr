@@ -10,7 +10,6 @@ Sonarr/Radarr history is slow on big libraries.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import re
@@ -44,6 +43,7 @@ class Library:
     def __init__(self, connections: Connections) -> None:
         self.connections = connections
         self._roots = _Cache(value=[])
+        self.roots_complete = False  # the last root folder lookup reached every Sonarr/Radarr instance
         self._imports = _Cache(value=({}, {}))
         self._index = _Cache(value=({}, False))
         self._groups = _Cache()
@@ -71,11 +71,14 @@ class Library:
     def root_dirs(self) -> list[str]:
         """Sonarr/Radarr root folders as Shredarr sees them (looked up every 5 minutes)."""
         if not self._roots.fresh(300):
-            paths, dirs = self.connections.paths(), []
+            paths, dirs, complete = self.connections.paths(), [], True
             for _, arr in self.connections.arrs():
-                with contextlib.suppress(ServiceError):
+                try:
                     dirs += [paths.local(r["path"].rstrip("/")) for r in arr.root_folders()]
+                except ServiceError:  # left out, so the list is short: roots_complete tells callers that need it all
+                    complete = False
             self._roots = _Cache(time.time(), sorted(set(dirs)))
+            self.roots_complete = complete
         return list(self._roots.value)
 
     def library_path(self, p: str | None, paths: PathMapper | None = None) -> str | None:

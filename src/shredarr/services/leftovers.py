@@ -81,6 +81,7 @@ class AutoLeftovers:
             found = self.leftovers(c, ts, groups, overrides, queued)
             imports = self.library.imports()
         except ServiceError:  # Sonarr/Radarr can't be asked: unsure what's in the library, so try again next sweep
+            self.since.clear()  # and the wait starts over: what was seen just before may have been wrong too
             return False
         if self.disk_trouble():  # the library watch may have looked while this was reading the torrents' files
             self.since.clear()
@@ -121,9 +122,10 @@ class AutoLeftovers:
         return added
 
     def library_readable(self) -> bool:
-        """Every Sonarr/Radarr root folder can be read (a missing one makes all its torrents look like leftovers)."""
+        """Every Sonarr/Radarr root folder is known and can be read (a missing one makes all its torrents look like
+        leftovers). A Sonarr/Radarr that couldn't be asked for its root folders counts as one that can't be read."""
         dirs = self.library.root_dirs()
-        return bool(dirs) and all(os.path.isdir(d) for d in dirs)
+        return self.library.roots_complete and bool(dirs) and all(os.path.isdir(d) for d in dirs)
 
     def leftovers(
         self, c: Config, ts: Torrents, groups: dict[str, set[str]], overrides: dict[str, Rule], queued: set[str]
