@@ -20,6 +20,7 @@ from ..repositories import HistoryRepo, OverridesRepo, PendingRepo, RedownloadsR
 from ..text import duration, human
 from .activity import Activity
 from .connections import Connections
+from .leftovers import AutoLeftovers
 from .library import Library
 from .notifications import Notifier
 from .rules import evaluate, rule_for
@@ -120,6 +121,7 @@ class Cleaner:
         activity: Activity,
         notifier: Notifier,
         saved: SavedTorrents,
+        leftovers: AutoLeftovers,
     ) -> None:
         self.config = config
         self.connections = connections
@@ -132,6 +134,7 @@ class Cleaner:
         self.activity = activity
         self.notifier = notifier
         self.saved = saved
+        self.leftovers = leftovers
         self.after_sweep: list[Callable[[], None]] = []  # e.g. checking on redownloads
         self._lock = threading.Lock()
         self._after_lock = threading.Lock()  # one after-sweep run at a time, outside the sweep lock
@@ -174,15 +177,28 @@ class Cleaner:
                 return False
             rows = self.pending.all()
             ov = self.overrides.all()
+            ts: Torrents | None = None
+            groups: dict[str, set[str]] | None = None
+            if c.behavior["auto_queue_leftovers"]:  # before the empty-queue check: that's when most leftovers appear
+                try:
+                    ts = {t["hash"]: t for t in self.connections.torrents.all()}
+                except ServiceError:  # the health check reports it; below, a queue with work in it tries again
+                    pass
+                else:
+                    groups = self.library.cross_seed_groups(list(ts.values()), 0)
+                    if self.leftovers.run(c, ts, groups, ov, {p.hash for p in rows}):
+                        rows = self.pending.all()
             if not rows and not ov and not self.redownloads.open():
                 return False
-            ts = {t["hash"]: t for t in self.connections.torrents.all()}
+            if ts is None:
+                ts = {t["hash"]: t for t in self.connections.torrents.all()}
             if rows and not ts and self.client_just_emptied(c):
                 return True
             if ts:  # forget rules of torrents that no longer exist
                 self._empty_since = None
                 self.overrides.remove(*[h for h in ov if h not in ts])
-            groups = self.library.cross_seed_groups(list(ts.values()), 0)
+            if groups is None:
+                groups = self.library.cross_seed_groups(list(ts.values()), 0)
             if self.queue_cross_seeds([(p.hash, p.name) for p in rows], ts, groups):
                 rows = self.pending.all()
             ctx = SweepContext(ts, groups, {p.hash for p in rows})

@@ -22,6 +22,7 @@ from .services.dashboard import Dashboard
 from .services.delete_now import DeleteNow
 from .services.deletes import MediaDeletes
 from .services.health import Health, Updates
+from .services.leftovers import AutoLeftovers
 from .services.library import Library
 from .services.notifications import Notifier
 from .services.orphans import Orphans
@@ -77,6 +78,13 @@ class Shredarr:
         self.deletes = MediaDeletes(
             self.config, self.connections, self.queue, self.activity, self.notifier, self.suppressions
         )
+        self.events: queue.Queue[JSON] = queue.Queue()
+        self.watcher = LibraryWatcher(
+            self.library, self.suppressions, self.activity, self.events.put, settings.watch_file, settings.watch_confirm
+        )
+        self.leftovers = AutoLeftovers(
+            self.library, self.trackers, self.queue, self.activity, settings.leftover_wait, self.watcher.disk_trouble
+        )
         self.cleaner = Cleaner(
             self.config,
             self.connections,
@@ -89,6 +97,7 @@ class Shredarr:
             self.activity,
             self.notifier,
             self.saved,
+            self.leftovers,
         )
         self.removal = MediaRemoval(self.connections, self.suppressions)
         self.delete_now = DeleteNow(
@@ -150,10 +159,6 @@ class Shredarr:
             self.saved,
         )
         self.editor = SettingsEditor(self.config, self.overrides, self.activity, lambda: spawn(self.cleaner.safe_sweep))
-        self.events: queue.Queue[JSON] = queue.Queue()
-        self.watcher = LibraryWatcher(
-            self.library, self.suppressions, self.activity, self.events.put, settings.watch_file, settings.watch_confirm
-        )
 
     def settings_changed(self) -> None:
         """Connections were saved: new clients, and look everything up again."""

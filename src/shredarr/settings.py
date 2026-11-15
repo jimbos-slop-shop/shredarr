@@ -20,6 +20,7 @@ class Settings:
     # seconds a connection must stay down before it is reported: with checks every 5 minutes that means two
     # failed checks in a row, so a ~30 s container restart (a VPN reconnect, an app update) isn't an alert
     health_grace: float = 120
+    leftover_wait: float = 3600  # seconds a torrent must stay a leftover before it is queued by itself
     read_only: bool = False  # a test copy: never change anything in another app, send no notifications
     static_dir: str = STATIC_DIR
 
@@ -35,6 +36,7 @@ class Settings:
             watch_interval=float(env("SHREDARR_WATCH_INTERVAL", str(cls.watch_interval))),
             watch_confirm=float(env("SHREDARR_WATCH_CONFIRM", str(cls.watch_confirm))),
             health_grace=float(env("SHREDARR_HEALTH_GRACE", str(cls.health_grace))),
+            leftover_wait=float(env("SHREDARR_LEFTOVER_WAIT", str(cls.leftover_wait))),
             read_only=env("SHREDARR_READ_ONLY", "").lower() in ("1", "true", "yes", "on"),
         )
 

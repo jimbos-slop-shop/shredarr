@@ -4,6 +4,14 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
+### Added
+
+- *Settings → Cleanup behavior → Clean up leftovers automatically* (off by default). When Sonarr or Radarr replace a
+  file with an upgrade, the old torrent goes on the cleanup list by itself after an hour and is removed once its
+  seeding rule is met. Protected torrents are skipped. Nothing is added while a library folder can't be read,
+  Sonarr/Radarr can't be reached or the Plex library watch thinks a disk is offline, and when many torrents turn into
+  leftovers at once none are added and a notification is sent instead ([#26](https://github.com/jimbos-slop-shop/shredarr/issues/26)).
+
 ### Fixed
 
 - The demo no longer writes real gigabytes on Windows. Lab files keep their length and take no disk space.

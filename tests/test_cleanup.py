@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 
 from tests.conftest import StartFn
 from tests.fakes.lab import OTHER_TRACKER, Lab
@@ -155,10 +156,94 @@ def test_leftovers_and_upgrades(lab: Lab, start: StartFn, golden) -> None:
     assert t[old.name]["leftover"] is True and t[old.name]["in_library"] == 0
     assert t[new.name]["leftover"] is False and t[new.name]["in_library"] == 1
     assert t[courses.name]["tracked"] is False and t[courses.name]["leftover"] is False
+    s.sweep()
+    assert not s.pending(), "Clean up leftovers automatically is off by default"
     queue(s, old.hash, "not-a-hash")
     s.wait_status(old.hash, "^seeding")
     assert s.pending()[old.hash]["source"] == "leftover"
     golden("log", s.log())
+
+
+AUTO = {"auto_queue_leftovers": True}
+NO_WAIT = {"SHREDARR_LEFTOVER_WAIT": "0"}  # leftovers are queued right away, not after an hour
+
+
+def test_leftovers_queued_automatically(lab: Lab, start: StartFn, golden) -> None:
+    show = lab.add_series("Paper Moons", seasons={1: 2})
+    old = lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.720p.HDTV-OLD")
+    new = lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.1080p.WEB-NEW")  # an upgrade replaced the file
+    kept = lab.add_series("Harbor Lights", seasons={1: 1})
+    kept_old = lab.add_release(kept, 1, [1], release="Harbor.Lights.S01E01.720p.HDTV-OLD")
+    lab.add_release(kept, 1, [1], release="Harbor.Lights.S01E01.1080p.WEB-NEW")
+    never = [{"type": "title", "match": "harbor lights", "mode": "never", "min_seed_days": None, "min_ratio": None}]
+    s = start(behavior=AUTO, rule_list=never, env=NO_WAIT)
+    s.wait_status(old.hash, "^seeding")
+    assert s.pending()[old.hash]["source"] == "leftover"
+    assert new.hash not in s.pending()
+    assert kept_old.hash not in s.pending(), "protected torrents stay"
+    golden("log", s.log())
+
+
+def test_leftovers_are_not_queued_after_less_than_an_hour(lab: Lab, start: StartFn) -> None:
+    show = lab.add_series("Paper Moons", seasons={1: 1})
+    lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.720p.HDTV-OLD")
+    lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.1080p.WEB-NEW")
+    s = start(behavior=AUTO)
+    s.sweep()
+    s.sweep()
+    assert not s.pending()
+
+
+def test_leftovers_in_dry_run_are_only_logged(lab: Lab, start: StartFn) -> None:
+    show = lab.add_series("Paper Moons", seasons={1: 1})
+    lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.720p.HDTV-OLD")
+    lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.1080p.WEB-NEW")
+    s = start(behavior=AUTO, dry_run=True, env=NO_WAIT)
+    s.wait_log(r"^\[dry run\] would have added 'Paper Moons' S01E01 to the cleanup list: its files were replaced$")
+    s.sweep()
+    assert not s.pending()
+    assert sum("would have added" in x for x in s.log()) == 1, "said once, not on every sweep"
+
+
+def test_many_leftovers_at_once_are_not_queued(lab: Lab, start: StartFn) -> None:
+    movies = [lab.add_movie(f"Movie {i:02d}", 2000 + i) for i in range(21)]
+    for m in movies:
+        lab.delete_movie_files(m)  # what a disk going offline looks like
+    s = start(behavior=AUTO, env=NO_WAIT)
+    s.wait_log(
+        "^21 of 21 torrents turned into leftovers at once. That looks like a disk going offline, not upgrades, so "
+        "none were added to the cleanup list. If they really are leftovers, add them from Leftovers on the dashboard$"
+    )
+    s.sweep()
+    assert not s.pending()
+    assert sum("turned into leftovers at once" in x for x in s.log()) == 1, "said once, not on every sweep"
+    wait_for(lambda: "Shredarr hit a problem" in lab.ntfy.titles(), what="the notification")
+
+
+def test_no_leftovers_queued_while_radarr_cant_list_its_root_folders(lab: Lab, start: StartFn) -> None:
+    """Radarr's root folders drop out of the library list, so its torrents' files can't be found there."""
+    m = lab.add_movie("Spring", 2019)
+    assert m.torrent
+    lab.delete_movie_files(m)  # a real leftover, held back only because Radarr couldn't be asked
+    lab.radarr.fail(r"/rootfolder$")
+    s = start(behavior=AUTO, env=NO_WAIT)
+    s.sweep()
+    assert not s.pending(), "queued while Radarr's root folders were unknown"
+    assert next(t for t in s.api("/api/torrents")["torrents"] if t["hash"] == m.torrent.hash)["leftover"]
+    lab.radarr.fix()
+    s.restart()  # the root folders are looked up again (otherwise within 5 minutes)
+    s.wait_status(m.torrent.hash, "^seeding")
+    assert s.pending()[m.torrent.hash]["source"] == "leftover"
+
+
+def test_no_leftovers_queued_while_a_library_folder_is_missing(lab: Lab, start: StartFn) -> None:
+    m = lab.add_movie("Spring", 2019)
+    assert m.torrent
+    shutil.rmtree(lab.movies)  # the Radarr root folder can't be read: a disk or share is gone
+    s = start(behavior=AUTO, env=NO_WAIT)
+    s.sweep()
+    assert next(t for t in s.api("/api/torrents")["torrents"] if t["hash"] == m.torrent.hash)["leftover"]
+    assert not s.pending()
 
 
 def test_cross_seed_sharing_files_waits_for_its_own_rule(lab: Lab, start: StartFn, golden) -> None:

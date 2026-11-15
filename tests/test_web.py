@@ -166,13 +166,15 @@ def test_save_connections(lab: Lab, start: StartFn, golden) -> None:
         "config", {k: c[k] for k in ("sonarr", "radarr", "plex", "extra_arrs") if k in c} | {"has_seerr": "seerr" in c}
     )
     s.wait_log("Connection settings saved")
-    assert s.post("/api/behavior", {"unmonitor": False, "bogus": True}).status_code == 200
+    behavior = {"unmonitor": False, "auto_queue_leftovers": True, "bogus": True}
+    assert s.post("/api/behavior", behavior).status_code == 200
     assert s.read_config()["behavior"] == {
         "import_exclusion": True,
         "remove_from_seerr": True,
         "unmonitor": False,
         "remove_episode_files": True,
         "cross_seed_with_original": False,
+        "auto_queue_leftovers": True,
     }
     assert s.post("/api/update-check", {"enabled": False}).status_code == 200
     assert s.read_config()["update_check"] is False

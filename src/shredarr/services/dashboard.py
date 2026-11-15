@@ -12,6 +12,7 @@ from ..repositories import HistoryRepo, OverridesRepo, PendingRepo
 from .cleanup import Cleaner, free_gb
 from .connections import Connections
 from .health import Health, Updates
+from .leftovers import is_leftover, is_managed
 from .library import Library
 from .media_files import restorable
 from .rules import evaluate, met_parts
@@ -93,7 +94,7 @@ class Dashboard:
             r = self.cleaner.rule(t, ov, c, title)
             progress, met = evaluate(r, t)
             lib = self.library.in_library(t, max_age=60)
-            managed = h in imap or any(x in imap for x in groups.get(h, ()))
+            managed = is_managed(h, imap, groups)
             out.append(
                 {
                     "hash": h,
@@ -121,7 +122,7 @@ class Dashboard:
                     "tracked": managed,
                     **met_parts(r, t),
                     "in_library": lib,
-                    "leftover": managed and not lib and h not in pend and t["progress"] >= 1,
+                    "leftover": is_leftover(self.library, t, imap, groups, pend),
                     "queued": h in pend,
                     "queued_as": p.name if p else None,
                     "status": p.status if p else None,

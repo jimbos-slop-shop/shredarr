@@ -41,7 +41,8 @@ your seeding rule is met, then removes the torrent and its download, with an **U
 - **Media with no torrent.** Lists movies and seasons in your library whose torrent is gone (so they aren't
   seeding anymore), biggest first, and deletes them everywhere in one go.
 - **Low disk space override.** Below a free-space threshold, waiting torrents go early, oldest first.
-- **Leftover finder.** Spots torrents whose media is no longer in your library and lets you clean them up.
+- **Leftover finder.** Spots torrents whose media is no longer in your library (usually because Sonarr/Radarr
+  upgraded the file) and lets you clean them up, or puts them on the cleanup list by itself if you switch that on.
 - **History.** Everything that was cleaned up, with sizes and a running "space freed" total.
 - **Bulk actions.** Select many torrents to set a rule, protect, undo or delete them at once.
 - **Notifications.** Discord (custom name and avatar), ntfy and Pushover: cleanups, problems, undos, deletes and a
@@ -132,6 +133,15 @@ sends no notifications, whatever its settings say (a banner says so). Handy for 
    moves to History, ready for Redownload. If the torrent client lists no torrents at all (while it starts up, say),
    the cleanup list is kept for 15 minutes before its torrents count as gone.
 
+**Leftovers** are torrents Sonarr/Radarr imported from whose files are no longer in your library, usually because
+an upgrade replaced them. The dashboard lists them so you can add them to the cleanup list. With *Settings → Cleanup
+behavior → Clean up leftovers automatically*, Shredarr adds them by itself once they have been leftovers for an hour,
+and they go when their seeding rule is met. Protected torrents ("Never delete") are skipped. Because a disk going
+offline makes every torrent look like a leftover, nothing is added while a library folder can't be read, while
+Sonarr/Radarr can't be reached, or while the Plex library watch sees files vanish at once. When more than 20
+torrents (and more than a fifth of them) turn into leftovers together, none are added and you get a notification
+instead.
+
 A deleted show or season whose folder still exists on disk is treated as Jellyfin tidying up an *empty* show, not
 as a delete, so weekly shows don't disappear from Sonarr when you delete their latest episode.
 
@@ -150,7 +160,7 @@ Settings has a menu on the left (a row of tabs on phones) and shows one section 
 | Connections | App addresses and keys (Seerr and Prowlarr are optional), connection status, Jellyfin webhook setup, path mappings |
 | Seeding rules | Extra rules by show/movie, tracker or category; "Never delete" protects |
 | Notifications | Discord, ntfy, Pushover, and which events to send |
-| Cleanup behavior | Import exclusions, Seerr removal, unmonitoring, episode file records, cross-seeds |
+| Cleanup behavior | Import exclusions, Seerr removal, unmonitoring, episode file records, cross-seeds, cleaning up leftovers automatically |
 | Deletion delay | Minimum wait before a torrent is removed (time to Undo) |
 | Low disk space | Delete waiting torrents early when free space runs low |
 | RAR restore | Unpack RAR releases again for Undo |

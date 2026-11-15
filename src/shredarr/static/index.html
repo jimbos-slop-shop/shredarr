@@ -177,6 +177,7 @@
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Unmonitor deleted episodes" name="unmonitor"><span><b>Unmonitor deleted episodes and seasons</b><small>Otherwise Sonarr may download them again.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Remove episode file records" name="remove_episode_files"><span><b>Remove deleted episodes' file records</b><small>Keeps Sonarr's view of your library accurate straight away.</small></span></div>
 <div class="sw-row"><input type="checkbox" class="sw" aria-label="Delete cross-seeds together with the original" name="cross_seed_with_original"><span><b>Delete cross-seeds together with the original</b><small>Cross-seeds (the same release seeding from other trackers) are always cleaned up with the original. When this is off, each one first waits for its own tracker's seeding rule.</small></span></div>
+<div class="sw-row"><input type="checkbox" class="sw" aria-label="Clean up leftovers automatically" name="auto_queue_leftovers"><span><b>Clean up leftovers automatically</b><small>When Sonarr or Radarr replace a file (an upgrade), the old torrent goes on the cleanup list by itself and is removed once its seeding rule is met. It waits an hour first, skips protected torrents, and holds back if a library folder looks offline.</small></span></div>
 </form></section>
 
 <section class="sbox" id="s-delay" data-group="Cleanup"><h3><span class="ic green"><svg class="i"><use href="#i-clock"/></svg></span>Deletion delay</h3>

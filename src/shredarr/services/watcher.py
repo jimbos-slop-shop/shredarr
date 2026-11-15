@@ -39,6 +39,10 @@ class LibraryWatcher:
         self.offline = False
         self.vanished = 0  # files the "vanished at once" message was about (0: not said), so it's said once
 
+    def disk_trouble(self) -> bool:
+        """The last look found a root folder it can't read, or many files gone at once: a disk may be offline."""
+        return self.offline or bool(self.vanished)
+
     def library_files(self) -> dict[str, list[int]] | None:
         """path -> [device, inode] of every video file in the Sonarr/Radarr root folders, or None if one can't be
         read."""
