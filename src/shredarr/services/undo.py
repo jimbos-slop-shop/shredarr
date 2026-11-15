@@ -105,9 +105,18 @@ class Undo:
     def undo_leftover(self, h: str, name: str) -> None:
         """A leftover's media was never deleted, so there is nothing to restore. Take it off the list and protect it
         (rule "never", the same as Protect), or the next sweep would queue it again."""
+        try:
+            groups = self.library.cross_seed_groups(self.connections.torrents.all(), 0)
+        except ServiceError:
+            groups = {}
+        # only those actually queued as cross-seeds: protecting the original stops them being queued again
+        queued = [x for x in groups.get(h, ()) if (p := self.pending.get(x)) and p.source == "cross-seed"]
         self.pending.remove(h)
+        self.pending.remove(*queued, source="cross-seed")
         self.overrides.set(h, "never", None, None)
-        self.activity.info(f"Undo: '{name}' taken off the cleanup list and protected")
+        n = len(queued)
+        extra = f" (with {n} cross-seed{'s' * (n > 1)})" if n else ""
+        self.activity.info(f"Undo: '{name}' taken off the cleanup list{extra} and protected")
 
     def run(self, h: str) -> None:
         try:
