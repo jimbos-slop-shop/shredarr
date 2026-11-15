@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import sqlite3
+import time
 
 import httpx
 
@@ -25,6 +26,11 @@ def test_state_from_1_2_1(lab: Lab, tmp_path, golden) -> None:
     lab.delete_movie_files(waiting)
     s = Shredarr(str(tmp_path / "s"), {**lab.config(), "auth": old["auth"]})
     shutil.copy(os.path.join(FIXTURES, "state-1.2.1.db"), s.db_path)
+    # the fixture's session was made with the usual 30 days and ran out on 2026-11-15: move its expiry ahead so the
+    # test keeps checking that an old session works, not what the date is
+    with sqlite3.connect(s.db_path) as con:
+        con.execute("update sessions set expires = ? where token = ?", (time.time() + 30 * 86400, old["session"]))
+    con.close()
     s.start()
     try:
         rows = s.api("/api/history")["rows"]
