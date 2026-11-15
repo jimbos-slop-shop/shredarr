@@ -30,7 +30,8 @@ your seeding rule is met, then removes the torrent and its download, with an **U
   to it) are found automatically and cleaned up along with the original: each after its own tracker's seeding
   rule, or all together. Data another torrent still seeds from is never deleted out from under it.
 - **Undo.** Changed your mind? While the torrent is still seeding, Undo re-adds the item to Sonarr/Radarr with its
-  old settings and re-imports the file. RAR releases are unpacked again with the built-in unpacker.
+  old settings and re-imports the file. RAR releases are unpacked again with the built-in unpacker. Undo on a leftover (nothing was deleted) takes it off
+  the cleanup list and protects it, so it isn't queued again.
 - **Redownload.** Already gone for good? Every cleanup in History has a **Redownload** button: Shredarr puts the
   movie or episodes back in Sonarr/Radarr (with their old settings), then either re-adds the **same release** (it
   keeps a copy of each `.torrent`, for a year by default) or lets Sonarr/Radarr **search again**. Season packs and

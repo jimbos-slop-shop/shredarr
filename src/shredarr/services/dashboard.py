@@ -127,7 +127,13 @@ class Dashboard:
                     "queued_as": p.name if p else None,
                     "status": p.status if p else None,
                     "delete_after": p.added_at + grace if p and grace else None,
-                    "undo": None if not p else ("ok" if p.undo and restorable(t["content_path"]) else "no"),
+                    "undo": None
+                    if not p
+                    else (
+                        "ok"
+                        if (p.undo and restorable(t["content_path"])) or (not p.undo and p.source == "leftover")
+                        else "no"
+                    ),
                 }
             )
         return {

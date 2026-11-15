@@ -389,3 +389,23 @@ def test_qbittorrent_session_expiry_signs_in_again(lab: Lab, start: StartFn) -> 
     lab.delete_movie_files(m)
     s.webhook(lab.movie_event(m))
     s.wait_log("^deleted torrent")
+
+
+def test_undo_on_a_leftover_takes_it_off_the_list_and_protects_it(lab: Lab, start: StartFn) -> None:
+    show = lab.add_series("Paper Moons", seasons={1: 2})
+    old = lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.720p.HDTV-OLD")
+    lab.add_release(show, 1, [1], release="Paper.Moons.S01E01.1080p.WEB-NEW")  # an upgrade replaced the file
+    s = start(behavior=AUTO, env=NO_WAIT)
+    s.wait_status(old.hash, "^seeding")
+    assert s.pending()[old.hash]["source"] == "leftover"
+    t = next(x for x in s.api("/api/torrents")["torrents"] if x["hash"] == old.hash)
+    assert t["undo"] == "ok"
+    plan = s.api("/api/undo-plan", hash=old.hash)
+    assert plan["problem"] is None
+    assert plan["steps"] == ["Take it off the cleanup list", "Protect it so it isn't queued again"]
+    assert s.post("/api/undo", {"hash": old.hash}).status_code == 202
+    s.wait_log("^Undo: 'Paper Moons' taken off the cleanup list and protected$")
+    assert old.hash not in s.pending()
+    assert s.sql("select mode from overrides where hash=?", old.hash) == [("never",)]
+    s.sweep()
+    assert old.hash not in s.pending(), "protected, so the next sweep leaves it alone"

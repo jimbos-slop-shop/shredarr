@@ -124,7 +124,14 @@ class Shredarr:
         )
         self.restorer = Restorer(self.config, self.connections, self.library)
         self.undo = Undo(
-            self.config, self.connections, self.library, self.restorer, self.pending, self.activity, self.notifier
+            self.config,
+            self.connections,
+            self.library,
+            self.restorer,
+            self.pending,
+            self.overrides,
+            self.activity,
+            self.notifier,
         )
         self.redownloader = Redownloader(
             self.config,
