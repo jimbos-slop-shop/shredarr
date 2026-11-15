@@ -10,7 +10,7 @@ from ..clients.base import ServiceError
 from ..clients.servarr import RadarrClient, SonarrClient
 from ..clients.torrents import Torrent
 from ..config import JSON, ConfigStore
-from ..repositories import PendingRepo
+from ..repositories import OverridesRepo, PendingRepo
 from .activity import Activity
 from .connections import Connections
 from .library import Library
@@ -37,6 +37,7 @@ class Undo:
         library: Library,
         restorer: Restorer,
         pending: PendingRepo,
+        overrides: OverridesRepo,
         activity: Activity,
         notifier: Notifier,
     ) -> None:
@@ -45,6 +46,7 @@ class Undo:
         self.library = library
         self.restorer = restorer
         self.pending = pending
+        self.overrides = overrides
         self.activity = activity
         self.notifier = notifier
 
@@ -54,6 +56,8 @@ class Undo:
         if not p:
             return None, [], "it isn't waiting for cleanup"
         if not p.undo:
+            if p.source == "leftover":  # nothing was deleted, so there is nothing to restore: see run()
+                return self.connections.torrents.get(h), [(h, p.name, None)], None
             return None, [], "it was queued before Undo existed"
         rows: list[UndoRow] = [(h, p.name, p.undo)]
         if p.undo["kind"] == "series" and p.event:
@@ -68,8 +72,10 @@ class Undo:
             return t, rows, "it's a RAR release and RAR restore is turned off in Settings"
         return t, rows, None
 
-    def steps(self, t: Torrent, rows: list[UndoRow]) -> list[str]:
-        snap = rows[0][2] or {}
+    def steps(self, t: Torrent | None, rows: list[UndoRow]) -> list[str]:
+        if rows[0][2] is None or t is None:
+            return ["Take it off the cleanup list", "Protect it so it isn't queued again"]
+        snap = rows[0][2]
         c = self.config.load()
         app = c.arr_name(snap_app(snap))
         if snap["kind"] == "movie":
@@ -96,6 +102,22 @@ class Undo:
             middle,
         ]
 
+    def undo_leftover(self, h: str, name: str) -> None:
+        """A leftover's media was never deleted, so there is nothing to restore. Take it off the list and protect it
+        (rule "never", the same as Protect), or the next sweep would queue it again."""
+        try:
+            groups = self.library.cross_seed_groups(self.connections.torrents.all(), 0)
+        except ServiceError:
+            groups = {}
+        # only those actually queued as cross-seeds: protecting the original stops them being queued again
+        queued = [x for x in groups.get(h, ()) if (p := self.pending.get(x)) and p.source == "cross-seed"]
+        self.pending.remove(h)
+        self.pending.remove(*queued, source="cross-seed")
+        self.overrides.set(h, "never", None, None)
+        n = len(queued)
+        extra = f" (with {n} cross-seed{'s' * (n > 1)})" if n else ""
+        self.activity.info(f"Undo: '{name}' taken off the cleanup list{extra} and protected")
+
     def run(self, h: str) -> None:
         try:
             t, rows, problem = self.info(h)
@@ -103,7 +125,9 @@ class Undo:
             t, rows, problem = None, [], repr(e)
         if problem:
             return self.activity.error(f"Undo failed: {problem}")
-        snap = rows[0][2] or {}
+        if rows[0][2] is None:
+            return self.undo_leftover(h, rows[0][1])
+        snap = rows[0][2]
         kind = "movie" if snap["kind"] == "movie" else "tv"
         arr = self.connections.arr(snap_app(snap))
         self.activity.info(f"Undo: {rows[0][1]}")

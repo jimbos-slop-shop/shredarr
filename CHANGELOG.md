@@ -14,6 +14,7 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ### Fixed
 
+- Undo works on leftovers. It takes the torrent off the cleanup list and protects it, so it isn't queued again.
 - The demo no longer writes real gigabytes on Windows. Lab files keep their length and take no disk space.
 - Free space is read with `shutil.disk_usage`, so the torrent list loads on Windows. On Linux the figure is the same as before.
 

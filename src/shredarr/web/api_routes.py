@@ -92,7 +92,7 @@ def undo_plan(core: Core, hash: str = "") -> Response:
             "name": rows[0][1] if rows else hash,
             "problem": problem,
             "count": len(rows),
-            "steps": core.undo.steps(t, rows) if t and not problem else [],
+            "steps": core.undo.steps(t, rows) if not problem else [],
         }
     )
 

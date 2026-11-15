@@ -33,7 +33,7 @@
     "tracked": true,
     "tracker": "tracker.example.org",
     "tracker_name": "ExampleTracker",
-    "undo": "no",
+    "undo": "ok",
     "upspeed": 0,
     "with_original": false
   },
@@ -71,7 +71,7 @@
     "tracked": true,
     "tracker": "announce.othersite.net",
     "tracker_name": "ExampleTracker",
-    "undo": "no",
+    "undo": "ok",
     "upspeed": 0,
     "with_original": false
   },
@@ -109,7 +109,7 @@
     "tracked": true,
     "tracker": "tracker.example.org",
     "tracker_name": "ExampleTracker",
-    "undo": "no",
+    "undo": "ok",
     "upspeed": 0,
     "with_original": false
   },
@@ -147,7 +147,7 @@
     "tracked": true,
     "tracker": "tracker.example.org",
     "tracker_name": "ExampleTracker",
-    "undo": "no",
+    "undo": "ok",
     "upspeed": 0,
     "with_original": false
   },
@@ -185,7 +185,7 @@
     "tracked": true,
     "tracker": "tracker.example.org",
     "tracker_name": "ExampleTracker",
-    "undo": "no",
+    "undo": "ok",
     "upspeed": 0,
     "with_original": false
   },
@@ -223,7 +223,7 @@
     "tracked": true,
     "tracker": "tracker.example.org",
     "tracker_name": "ExampleTracker",
-    "undo": "no",
+    "undo": "ok",
     "upspeed": 0,
     "with_original": false
   }
