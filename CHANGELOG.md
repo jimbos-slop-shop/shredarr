@@ -4,6 +4,8 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-16
+
 ### Added
 
 - *Settings → Cleanup behavior → Clean up leftovers automatically* (off by default). When Sonarr or Radarr replace a
@@ -17,6 +19,21 @@ Notable changes per release. Releases before 2.0.0 are in the [git history](http
 - Undo works on leftovers. It takes the torrent off the cleanup list and protects it, so it isn't queued again.
 - The demo no longer writes real gigabytes on Windows. Lab files keep their length and take no disk space.
 - Free space is read with `shutil.disk_usage`, so the torrent list loads on Windows. On Linux the figure is the same as before.
+
+### Changed
+
+- The Docker image is built on Python 3.15.
+
+## [2.3.3] - 2026-11-04
+
+### Fixed
+
+- A connection has to stay down for `health_grace` seconds (default 120, `SHREDARR_HEALTH_GRACE`) before
+  "Connection FAILED" is logged and sent, so a short restart (a VPN reconnect restarting qBittorrent, an app update)
+  no longer sends a FAILED and restored pair. "Connection restored" is only sent after a failure was reported. The
+  dashboard still shows the app as down right away.
+- qBittorrent: an http WebUI that can't be reached is no longer retried over https, which turned the error into a
+  misleading "untrusted certificate" message.
 
 ## [2.3.2] - 2026-10-17
 
